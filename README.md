@@ -1,4 +1,5 @@
 cron
 ====
 
-a cron library for go
+A cron library for Go.
+
