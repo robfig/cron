@@ -23,12 +23,12 @@ func TestRange(t *testing.T) {
 		{"5-7/2", 0, 7, 1<<5 | 1<<7},
 		{"5-7/1", 0, 7, 1<<5 | 1<<6 | 1<<7},
 
-		{"*", 1, 3, 1<<1 | 1<<2 | 1<<3},
-		{"*/2", 1, 3, 1<<1 | 1<<3},
+		{"*", 1, 3, 1<<1 | 1<<2 | 1<<3 | STAR_BIT},
+		{"*/2", 1, 3, 1<<1 | 1<<3 | STAR_BIT},
 	}
 
 	for _, c := range ranges {
-		actual := getRange(c.expr, Range{c.min, c.max})
+		actual := getRange(c.expr, bounds{c.min, c.max, nil})
 		if actual != c.expected {
 			t.Errorf("%s => (expected) %d != %d (actual)", c.expr, c.expected, actual)
 		}
@@ -48,7 +48,7 @@ func TestField(t *testing.T) {
 	}
 
 	for _, c := range fields {
-		actual := getField(c.expr, Range{c.min, c.max})
+		actual := getField(c.expr, bounds{c.min, c.max, nil})
 		if actual != c.expected {
 			t.Errorf("%s => (expected) %d != %d (actual)", c.expr, c.expected, actual)
 		}
@@ -57,7 +57,7 @@ func TestField(t *testing.T) {
 
 func TestBits(t *testing.T) {
 	allBits := []struct {
-		r        Range
+		r        bounds
 		expected uint64
 	}{
 		{minutes, 0xfffffffffffffff}, // 0-59: 60 ones
@@ -68,8 +68,8 @@ func TestBits(t *testing.T) {
 	}
 
 	for _, c := range allBits {
-		actual := all(c.r)
-		if c.expected != actual {
+		actual := all(c.r) // all() adds the STAR_BIT, so compensate for that..
+		if c.expected|STAR_BIT != actual {
 			t.Errorf("%d-%d/%d => (expected) %b != %b (actual)",
 				c.r.min, c.r.max, 1, c.expected, actual)
 		}
@@ -95,16 +95,16 @@ func TestBits(t *testing.T) {
 	}
 }
 
-func TestEntry(t *testing.T) {
+func TestSchedule(t *testing.T) {
 	entries := []struct {
 		expr     string
-		expected Entry
+		expected Schedule
 	}{
-		{"5 * * * *", Entry{1 << 5, all(hours), all(dom), all(months), all(dow), nil}},
+		{"* 5 * * * *", Schedule{all(seconds), 1 << 5, all(hours), all(dom), all(months), all(dow)}},
 	}
 
 	for _, c := range entries {
-		actual := *NewEntry(c.expr, nil)
+		actual := *Parse(c.expr)
 		if !reflect.DeepEqual(actual, c.expected) {
 			t.Errorf("%s => (expected) %b != %b (actual)", c.expr, c.expected, actual)
 		}
