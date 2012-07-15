@@ -55,7 +55,7 @@ func TestAddWhileRunning(t *testing.T) {
 func startAndSignal(cron *Cron) <-chan struct{} {
 	ch := make(chan struct{})
 	go func() {
-		cron.Start()
+		cron.Run()
 		ch <- struct{}{}
 	}()
 	return ch

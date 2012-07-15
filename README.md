@@ -12,7 +12,7 @@ them in their own goroutines.
 c := new(Cron)
 c.Add("0 5 * * * *", func() { fmt.Println("Every 5 minutes") })
 c.Add("@hourly", func() { fmt.Println("Every hour") })
-go c.Start()  // Scheduler blocks until stopped, so run it in its own goroutine.
+c.Start()
 ..
 // Funcs are invoked in their own goroutine, asynchronously.
 ...

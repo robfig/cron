@@ -50,6 +50,10 @@ func (c *Cron) Add(spec string, cmd func()) {
 }
 
 func (c *Cron) Start() {
+	go c.Run()
+}
+
+func (c *Cron) Run() {
 	// Figure out the next activation times for each entry.
 	now := time.Now()
 	for _, entry := range c.Entries {
