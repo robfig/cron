@@ -3,6 +3,7 @@
 package cron
 
 import (
+	_ "sort"
 	"time"
 )
 
@@ -17,70 +18,66 @@ type Cron struct {
 // A cron entry consists of a schedule and the func to execute on that schedule.
 type Entry struct {
 	*Schedule
+	Next time.Time
 	Func func()
 }
 
+type byTime []*Entry
+
+func (s byTime) Len() int           { return len(s) }
+func (s byTime) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (s byTime) Less(i, j int) bool { return s[i].Next.Before(s[j].Next) }
+
 func New() *Cron {
-	return new(Cron)
+	return &Cron{
+		Entries: nil,
+		stop:    make(chan struct{}),
+	}
 }
 
 func (c *Cron) Add(spec string, cmd func()) {
-	c.Entries = append(c.Entries, &Entry{Parse(spec), cmd})
+	c.Entries = append(c.Entries, &Entry{Parse(spec), time.Time{}, cmd})
 }
 
-func (c *Cron) Run() {
-	ticker := time.Tick(1 * time.Minute)
-	for {
-		select {
-		case now := <-ticker:
-			for _, entry := range c.Entries {
-				if matches(now, entry.Schedule) {
-					go entry.Func()
-				}
-			}
+// func (c *Cron) Run() {
+// 	if len(c.Entries) == 0 {
+// 		return
+// 	}
 
-		case <-c.stop:
-			return
-		}
-	}
-}
+// 	var (
+// 		now = time.Now()
+// 		effective = now
+// 	)
+
+// 	// Figure out the next activation times for each entry.
+// 	for _, entry := range c.Entries {
+// 		entry.Next = entry.Schedule.Next(now)
+// 	}
+// 	sort.Sort(byTime(c.Entries))
+
+// 	for {
+// 		// Sleep until the next job needs to get run.
+// 		effective = c.Entries[0].Next
+// 		time.Sleep(effective.Sub(now))
+
+// 		now = time.Now()
+
+// 		// Run every entry whose next time was this effective time.
+// 		// Find how long until the next entry needs to get run.
+// 		for _, e := range c.Entries {
+// 			if e.Next != effective {
+// 				break
+// 			}
+// 			// TODO: Check that it's at least one
+// 			go c.Func()
+// 		}
+
+// 		case <-c.stop:
+// 			return
+// 		}
+// 	}
+// }
 
 func (c Cron) Stop() {
 	c.stop <- struct{}{}
 }
-
-// Return true if the given entries overlap.
-func matches(t time.Time, sched *Schedule) bool {
-	var (
-		domMatch bool = 1<<uint(t.Day())&sched.Dom > 0
-		dowMatch bool = 1<<uint(t.Weekday())&sched.Dow > 0
-		dayMatch bool
-	)
-
-	if sched.Dom&STAR_BIT > 0 || sched.Dow&STAR_BIT > 0 {
-		dayMatch = domMatch && dowMatch
-	} else {
-		dayMatch = domMatch || dowMatch
-	}
-
-	return 1<<uint(t.Minute())&sched.Minute > 0 &&
-		1<<uint(t.Hour())&sched.Hour > 0 &&
-		1<<uint(t.Month())&sched.Month > 0 &&
-		dayMatch
-}
-
-// // Return the number of units betwee now and then.
-// func difference(then, now uint64, r bounds) uint {
-// 	// Shift the current time fields left (and around) until & is non-zero.
-// 	i := 0
-// 	for then & now << ((i - r.min) % (r.max - r.min + 1) + r.min) == 0 {
-// 		// A guard against no units selected.
-// 		if i > r.max {
-// 			panic("Entry had no minute/hour selected.")
-// 		}
-
-// 		i++
-// 	}
-
-// 	return i
-// }

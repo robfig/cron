@@ -1,112 +1,140 @@
 package cron
 
 import (
-	"reflect"
 	"testing"
+	"time"
 )
 
-func TestRange(t *testing.T) {
-	ranges := []struct {
-		expr     string
-		min, max uint
-		expected uint64
+func TestActivation(t *testing.T) {
+	tests := []struct {
+		time, spec string
+		expected   bool
 	}{
-		{"5", 0, 7, 1 << 5},
-		{"0", 0, 7, 1 << 0},
-		{"7", 0, 7, 1 << 7},
+		// Every fifteen minutes.
+		{"Mon Jul 9 15:00 2012", "0 0/15 * * *", true},
+		{"Mon Jul 9 15:45 2012", "0 0/15 * * *", true},
+		{"Mon Jul 9 15:40 2012", "0 0/15 * * *", false},
 
-		{"5-5", 0, 7, 1 << 5},
-		{"5-6", 0, 7, 1<<5 | 1<<6},
-		{"5-7", 0, 7, 1<<5 | 1<<6 | 1<<7},
+		// Every fifteen minutes, starting at 5 minutes.
+		{"Mon Jul 9 15:05 2012", "0 5/15 * * *", true},
+		{"Mon Jul 9 15:20 2012", "0 5/15 * * *", true},
+		{"Mon Jul 9 15:50 2012", "0 5/15 * * *", true},
 
-		{"5-6/2", 0, 7, 1 << 5},
-		{"5-7/2", 0, 7, 1<<5 | 1<<7},
-		{"5-7/1", 0, 7, 1<<5 | 1<<6 | 1<<7},
+		// Named months
+		{"Sun Jul 15 15:00 2012", "0 0/15 * * Jul", true},
+		{"Sun Jul 15 15:00 2012", "0 0/15 * * Jun", false},
 
-		{"*", 1, 3, 1<<1 | 1<<2 | 1<<3 | STAR_BIT},
-		{"*/2", 1, 3, 1<<1 | 1<<3 | STAR_BIT},
+		// Everything set.
+		{"Sun Jul 15 08:30 2012", "0 30 08 ? Jul Sun", true},
+		{"Sun Jul 15 08:30 2012", "0 30 08 15 Jul ?", true},
+		{"Mon Jul 16 08:30 2012", "0 30 08 ? Jul Sun", false},
+		{"Mon Jul 16 08:30 2012", "0 30 08 15 Jul ?", false},
+
+		// Predefined schedules
+		{"Mon Jul 9 15:00 2012", "@hourly", true},
+		{"Mon Jul 9 15:04 2012", "@hourly", false},
+		{"Mon Jul 9 15:00 2012", "@daily", false},
+		{"Mon Jul 9 00:00 2012", "@daily", true},
+		{"Mon Jul 9 00:00 2012", "@weekly", false},
+		{"Sun Jul 8 00:00 2012", "@weekly", true},
+		{"Sun Jul 8 01:00 2012", "@weekly", false},
+		{"Sun Jul 8 00:00 2012", "@monthly", false},
+		{"Sun Jul 1 00:00 2012", "@monthly", true},
+
+		// Test interaction of DOW and DOM.
+		// If both are specified, then only one needs to match.
+		{"Sun Jul 15 00:00 2012", "0 * * 1,15 * Sun", true},
+		{"Fri Jun 15 00:00 2012", "0 * * 1,15 * Sun", true},
+		{"Wed Aug 1 00:00 2012", "0 * * 1,15 * Sun", true},
+
+		// However, if one has a star, then both need to match.
+		{"Sun Jul 15 00:00 2012", "0 * * * * Mon", false},
+		{"Sun Jul 15 00:00 2012", "0 * * */10 * Sun", false},
+		{"Mon Jul 9 00:00 2012", "0 * * 1,15 * *", false},
+		{"Sun Jul 15 00:00 2012", "0 * * 1,15 * *", true},
+		{"Sun Jul 15 00:00 2012", "0 * * */2 * Sun", true},
 	}
 
-	for _, c := range ranges {
-		actual := getRange(c.expr, bounds{c.min, c.max, nil})
-		if actual != c.expected {
-			t.Errorf("%s => (expected) %d != %d (actual)", c.expr, c.expected, actual)
+	for _, test := range tests {
+		actual := Parse(test.spec).Next(getTime(test.time).Add(-1 * time.Second))
+		expected := getTime(test.time)
+		if test.expected && expected != actual || !test.expected && expected == actual {
+			t.Errorf("Fail evaluating %s on %s: (expected) %s != %s (actual)",
+				test.spec, test.time, expected, actual)
 		}
 	}
 }
 
-func TestField(t *testing.T) {
-	fields := []struct {
-		expr     string
-		min, max uint
-		expected uint64
+func TestNext(t *testing.T) {
+	runs := []struct {
+		time, spec string
+		expected   string
 	}{
-		{"5", 1, 7, 1 << 5},
-		{"5,6", 1, 7, 1<<5 | 1<<6},
-		{"5,6,7", 1, 7, 1<<5 | 1<<6 | 1<<7},
-		{"1,5-7/2,3", 1, 7, 1<<1 | 1<<5 | 1<<7 | 1<<3},
+		// Simple cases
+		{"Mon Jul 9 14:45 2012", "0 0/15 * * *", "Mon Jul 9 15:00 2012"},
+		{"Mon Jul 9 14:59 2012", "0 0/15 * * *", "Mon Jul 9 15:00 2012"},
+		{"Mon Jul 9 14:59:59 2012", "0 0/15 * * *", "Mon Jul 9 15:00 2012"},
+
+		// Wrap around hours
+		{"Mon Jul 9 15:45 2012", "0 20-35/15 * * *", "Mon Jul 9 16:20 2012"},
+
+		// Wrap around days
+		{"Mon Jul 9 23:46 2012", "0 */15 * * *", "Tue Jul 10 00:00 2012"},
+		{"Mon Jul 9 23:45 2012", "0 20-35/15 * * *", "Tue Jul 10 00:20 2012"},
+		{"Mon Jul 9 23:35:51 2012", "15/35 20-35/15 * * *", "Tue Jul 10 00:20:15 2012"},
+		{"Mon Jul 9 23:35:51 2012", "15/35 20-35/15 1/2 * *", "Tue Jul 10 01:20:15 2012"},
+		{"Mon Jul 9 23:35:51 2012", "15/35 20-35/15 10-12 * *", "Tue Jul 10 10:20:15 2012"},
+
+		{"Mon Jul 9 23:35:51 2012", "15/35 20-35/15 1/2 */2 * *", "Thu Jul 11 01:20:15 2012"},
+		{"Mon Jul 9 23:35:51 2012", "15/35 20-35/15 * 9-20 * *", "Wed Jul 10 00:20:15 2012"},
+		{"Mon Jul 9 23:35:51 2012", "15/35 20-35/15 * 9-20 Jul *", "Wed Jul 10 00:20:15 2012"},
+
+		// Wrap around months
+		{"Mon Jul 9 23:35 2012", "0 0 0 9 Apr-Oct ?", "Thu Aug 9 00:00 2012"},
+		{"Mon Jul 9 23:35 2012", "0 0 0 */5 Apr,Aug,Oct Mon", "Mon Aug 6 00:00 2012"},
+		{"Mon Jul 9 23:35 2012", "0 0 0 */5 Oct Mon", "Mon Oct 1 00:00 2012"},
+
+		// Wrap around years
+		{"Mon Jul 9 23:35 2012", "0 0 0 * Feb Mon", "Mon Feb 4 00:00 2013"},
+		{"Mon Jul 9 23:35 2012", "0 0 0 * Feb Mon/2", "Fri Feb 1 00:00 2013"},
+
+		// Wrap around minute, hour, day, month, and year
+		{"Mon Dec 31 23:59:45 2012", "0 * * * * *", "Tue Jan 1 00:00:00 2013"},
+
+		// Leap year
+		{"Mon Jul 9 23:35 2012", "0 0 0 29 Feb ?", "Mon Feb 29 00:00 2016"},
+
+		// Daylight savings time
+		{"Sun Mar 11 00:00 2012 EST", "0 30 2 11 Mar ?", "Mon Mar 11 02:30 2013 EDT"},
+
+		// Unsatisfiable
+		{"Mon Jul 9 23:35 2012", "0 0 0 30 Feb ?", ""},
+		{"Mon Jul 9 23:35 2012", "0 0 0 31 Apr ?", ""},
 	}
 
-	for _, c := range fields {
-		actual := getField(c.expr, bounds{c.min, c.max, nil})
-		if actual != c.expected {
-			t.Errorf("%s => (expected) %d != %d (actual)", c.expr, c.expected, actual)
+	for _, c := range runs {
+		actual := Parse(c.spec).Next(getTime(c.time))
+		expected := getTime(c.expected)
+		if actual != expected {
+			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.spec, expected, actual)
 		}
 	}
 }
 
-func TestBits(t *testing.T) {
-	allBits := []struct {
-		r        bounds
-		expected uint64
-	}{
-		{minutes, 0xfffffffffffffff}, // 0-59: 60 ones
-		{hours, 0xffffff},            // 0-23: 24 ones
-		{dom, 0xfffffffe},            // 1-31: 31 ones, 1 zero
-		{months, 0x1ffe},             // 1-12: 12 ones, 1 zero
-		{dow, 0xff},                  // 0-7: 8 ones
+func getTime(value string) time.Time {
+	if value == "" {
+		return time.Time{}
 	}
-
-	for _, c := range allBits {
-		actual := all(c.r) // all() adds the STAR_BIT, so compensate for that..
-		if c.expected|STAR_BIT != actual {
-			t.Errorf("%d-%d/%d => (expected) %b != %b (actual)",
-				c.r.min, c.r.max, 1, c.expected, actual)
+	t, err := time.Parse("Mon Jan 2 15:04 2006", value)
+	if err != nil {
+		t, err = time.Parse("Mon Jan 2 15:04:05 2006", value)
+		if err != nil {
+			t, err = time.Parse("Mon Jan 2 15:04 2006 MST", value)
+			if err != nil {
+				panic(err)
+			}
 		}
 	}
 
-	bits := []struct {
-		min, max, step uint
-		expected       uint64
-	}{
-
-		{0, 0, 1, 0x1},
-		{1, 1, 1, 0x2},
-		{1, 5, 2, 0x2a}, // 101010
-		{1, 4, 2, 0xa},  // 1010
-	}
-
-	for _, c := range bits {
-		actual := getBits(c.min, c.max, c.step)
-		if c.expected != actual {
-			t.Errorf("%d-%d/%d => (expected) %b != %b (actual)",
-				c.min, c.max, c.step, c.expected, actual)
-		}
-	}
-}
-
-func TestSchedule(t *testing.T) {
-	entries := []struct {
-		expr     string
-		expected Schedule
-	}{
-		{"* 5 * * * *", Schedule{all(seconds), 1 << 5, all(hours), all(dom), all(months), all(dow)}},
-	}
-
-	for _, c := range entries {
-		actual := *Parse(c.expr)
-		if !reflect.DeepEqual(actual, c.expected) {
-			t.Errorf("%s => (expected) %b != %b (actual)", c.expr, c.expected, actual)
-		}
-	}
+	return t
 }
