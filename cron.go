@@ -32,8 +32,8 @@ func (s byTime) Less(i, j int) bool { return s[i].Next.Before(s[j].Next) }
 func New() *Cron {
 	return &Cron{
 		Entries: nil,
-		add:     make(chan *Entry),
-		stop:    make(chan struct{}),
+		add:     make(chan *Entry, 1),
+		stop:    make(chan struct{}, 1),
 	}
 }
 

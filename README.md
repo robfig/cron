@@ -12,13 +12,15 @@ them in their own goroutines.
 c := new(Cron)
 c.Add("0 5 * * * *", func() { fmt.Println("Every 5 minutes") })
 c.Add("@hourly", func() { fmt.Println("Every hour") })
-go c.Run()  // Scheduler blocks until stopped, so run it in its own goroutine.
+go c.Start()  // Scheduler blocks until stopped, so run it in its own goroutine.
 ..
 // Funcs are invoked in their own goroutine, asynchronously.
+...
+// Funcs may also be added to a running Cron
+c.Add("@daily, func() { fmt.Println("Every day") })
 ..
 c.Stop()  // Stop the scheduler (does not stop any jobs already running).
 ```
-
 
 ## CRON Expression
 
@@ -93,3 +95,14 @@ provided by the [Go time package](http://www.golang.org/pkg/time)).
 Be aware that jobs scheduled during daylight-savings transitions will not be
 run!
 
+
+## Implementation
+
+Cron entries are stored in an array, sorted by their next activation time.  Cron
+sleeps until the next job is due to be run.
+
+Upon waking:
+* it runs each entry that is active on that second
+* it calculates the next run times for the jobs that were run
+* it re-sorts the array of entries by next activation time.
+* it goes to sleep until the soonest job.
