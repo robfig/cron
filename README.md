@@ -17,7 +17,7 @@ c.Start()
 // Funcs are invoked in their own goroutine, asynchronously.
 ...
 // Funcs may also be added to a running Cron
-c.Add("@daily, func() { fmt.Println("Every day") })
+c.Add("@daily", func() { fmt.Println("Every day") })
 ..
 c.Stop()  // Stop the scheduler (does not stop any jobs already running).
 ```
