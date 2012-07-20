@@ -9,15 +9,15 @@ Callers may register Funcs to be invoked on a given schedule.  Cron will run
 them in their own goroutines.
 
 ```go
-c := new(Cron)
-c.Add("0 5 * * * *", func() { fmt.Println("Every 5 minutes") })
-c.Add("@hourly", func() { fmt.Println("Every hour") })
+c := cron.New()
+c.AddFunc("0 5 * * * *", func() { fmt.Println("Every 5 minutes") })
+c.AddFunc("@hourly", func() { fmt.Println("Every hour") })
 c.Start()
 ..
 // Funcs are invoked in their own goroutine, asynchronously.
 ...
 // Funcs may also be added to a running Cron
-c.Add("@daily", func() { fmt.Println("Every day") })
+c.AddFunc("@daily", func() { fmt.Println("Every day") })
 ..
 c.Stop()  // Stop the scheduler (does not stop any jobs already running).
 ```
