@@ -25,9 +25,20 @@ type Entry struct {
 
 type byTime []*Entry
 
-func (s byTime) Len() int           { return len(s) }
-func (s byTime) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-func (s byTime) Less(i, j int) bool { return s[i].Next.Before(s[j].Next) }
+func (s byTime) Len() int      { return len(s) }
+func (s byTime) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s byTime) Less(i, j int) bool {
+	// Two zero times should return false.
+	// Otherwise, zero is "greater" than any other time.
+	// (To sort it at the end of the list.)
+	if s[i].Next.IsZero() {
+		return false
+	}
+	if s[j].Next.IsZero() {
+		return true
+	}
+	return s[i].Next.Before(s[j].Next)
+}
 
 func New() *Cron {
 	return &Cron{
@@ -46,6 +57,7 @@ func (c *Cron) Add(spec string, cmd func()) {
 	default:
 		// No one listening to that channel, so just add to the array.
 		c.Entries = append(c.Entries, entry)
+		entry.Next = entry.Schedule.Next(time.Now().Local()) // Just in case..
 	}
 }
 
@@ -55,7 +67,7 @@ func (c *Cron) Start() {
 
 func (c *Cron) Run() {
 	// Figure out the next activation times for each entry.
-	now := time.Now()
+	now := time.Now().Local()
 	for _, entry := range c.Entries {
 		entry.Next = entry.Schedule.Next(now)
 	}
@@ -65,7 +77,7 @@ func (c *Cron) Run() {
 		sort.Sort(byTime(c.Entries))
 
 		var effective time.Time
-		if len(c.Entries) == 0 {
+		if len(c.Entries) == 0 || c.Entries[0].Next.IsZero() {
 			// If there are no entries yet, just sleep - it still handles new entries
 			// and stop requests.
 			effective = now.AddDate(10, 0, 0)
@@ -86,6 +98,7 @@ func (c *Cron) Run() {
 
 		case newEntry := <-c.add:
 			c.Entries = append(c.Entries, newEntry)
+			newEntry.Next = newEntry.Schedule.Next(now)
 
 		case <-c.stop:
 			return
