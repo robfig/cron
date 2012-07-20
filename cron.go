@@ -16,11 +16,16 @@ type Cron struct {
 	add     chan *Entry
 }
 
+// Simple interface for submitted cron jobs.
+type Job interface {
+	Run()
+}
+
 // A cron entry consists of a schedule and the func to execute on that schedule.
 type Entry struct {
 	*Schedule
 	Next time.Time
-	Func func()
+	Job  Job
 }
 
 type byTime []*Entry
@@ -48,7 +53,16 @@ func New() *Cron {
 	}
 }
 
-func (c *Cron) Add(spec string, cmd func()) {
+// Provide a default implementation for those that want to run a simple func.
+type jobAdapter func()
+
+func (r jobAdapter) Run() { r() }
+
+func (c *Cron) AddFunc(spec string, cmd func()) {
+	c.AddJob(spec, jobAdapter(cmd))
+}
+
+func (c *Cron) AddJob(spec string, cmd Job) {
 	entry := &Entry{Parse(spec), time.Time{}, cmd}
 	select {
 	case c.add <- entry:
@@ -92,7 +106,7 @@ func (c *Cron) Run() {
 				if e.Next != effective {
 					break
 				}
-				go e.Func()
+				go e.Job.Run()
 				e.Next = e.Schedule.Next(effective)
 			}
 
