@@ -1,7 +1,8 @@
 cron
 ====
 
-A cron library for Go.
+A cron library for Go.  See the
+[godoc](http://go.pkgdoc.org/github.com/robfig/cron).
 
 ## Usage
 
@@ -18,6 +19,9 @@ c.Start()
 ...
 // Funcs may also be added to a running Cron
 c.AddFunc("@daily", func() { fmt.Println("Every day") })
+..
+// Inspect the cron job entries' next and previous run times.
+inspect(c.Entries())
 ..
 c.Stop()  // Stop the scheduler (does not stop any jobs already running).
 ```
@@ -92,9 +96,17 @@ Entry | Description | Equivalent To
 All interpretation and scheduling is done in the machine's local time zone (as
 provided by the [Go time package](http://www.golang.org/pkg/time)).
 
-Be aware that jobs scheduled during daylight-savings transitions will not be
-run!
+Be aware that jobs scheduled during daylight-savings leap-ahead transitions will
+not be run!
 
+## Thread safety
+
+Since the Cron service runs concurrently with the calling code, some amount of
+care must be taken to ensure proper synchronization.
+
+All [cron methods](http://go.pkgdoc.org/github.com/robfig/cron#Cron) are
+designed to be correctly synchronized as long as the caller ensures that
+invocations have a clear happens-before ordering between them.
 
 ## Implementation
 
