@@ -8,8 +8,8 @@ import (
 )
 
 // Cron keeps track of any number of entries, invoking the associated func as
-// specified by the spec.  See http://en.wikipedia.org/wiki/Cron
-// It may be started and stopped.
+// specified by the schedule. It may be started, stopped, and the entries may
+// be inspected while running.
 type Cron struct {
 	entries  []*Entry
 	stop     chan struct{}
@@ -18,19 +18,30 @@ type Cron struct {
 	running  bool
 }
 
-// Simple interface for submitted cron jobs.
+// Job is an interface for submitted cron jobs.
 type Job interface {
 	Run()
 }
 
-// A cron entry consists of a schedule and the func to execute on that schedule.
+// Entry consists of a schedule and the func to execute on that schedule.
 type Entry struct {
+	// The schedule on which this job should be run.
 	*Schedule
+
+	// The next time the job will run. This is the zero time if Cron has not been
+	// started or this entry's schedule is unsatisfiable
 	Next time.Time
+
+	// The last time this job was run. This is the zero time if the job has never
+	// been run.
 	Prev time.Time
-	Job  Job
+
+	// The Job to run.
+	Job Job
 }
 
+// byTime is a wrapper for sorting the entry array by time
+// (with zero time at the end).
 type byTime []*Entry
 
 func (s byTime) Len() int      { return len(s) }
@@ -48,6 +59,7 @@ func (s byTime) Less(i, j int) bool {
 	return s[i].Next.Before(s[j].Next)
 }
 
+// New returns a new Cron job runner.
 func New() *Cron {
 	return &Cron{
 		entries:  nil,
@@ -58,15 +70,17 @@ func New() *Cron {
 	}
 }
 
-// Provide a default implementation for those that want to run a simple func.
+// jobAdapter provides a default implementation for wrapping a simple func.
 type jobAdapter func()
 
 func (r jobAdapter) Run() { r() }
 
+// AddFunc adds a func to the Cron to be run on the given schedule.
 func (c *Cron) AddFunc(spec string, cmd func()) {
 	c.AddJob(spec, jobAdapter(cmd))
 }
 
+// AddFunc adds a Job to the Cron to be run on the given schedule.
 func (c *Cron) AddJob(spec string, cmd Job) {
 	entry := &Entry{
 		Schedule: Parse(spec),
@@ -80,7 +94,7 @@ func (c *Cron) AddJob(spec string, cmd Job) {
 	c.add <- entry
 }
 
-// Return a snapshot of the cron entries.
+// Entries returns a snapshot of the cron entries.
 func (c *Cron) Entries() []*Entry {
 	if c.running {
 		c.snapshot <- nil
@@ -90,6 +104,7 @@ func (c *Cron) Entries() []*Entry {
 	return c.entrySnapshot()
 }
 
+// Start the cron scheduler in its own go-routine.
 func (c *Cron) Start() {
 	c.running = true
 	go c.run()
@@ -142,11 +157,13 @@ func (c *Cron) run() {
 	}
 }
 
+// Stop the cron scheduler.
 func (c *Cron) Stop() {
 	c.stop <- struct{}{}
 	c.running = false
 }
 
+// entrySnapshot returns a copy of the current cron entry list.
 func (c *Cron) entrySnapshot() []*Entry {
 	entries := []*Entry{}
 	for _, e := range c.entries {

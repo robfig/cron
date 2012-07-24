@@ -4,13 +4,13 @@ import (
 	"time"
 )
 
-// A cron schedule that specifies a duty cycle (to the second granularity).
+// Schedule specifies a duty cycle (to the second granularity).
 // Schedules are computed initially and stored as bit sets.
 type Schedule struct {
 	Second, Minute, Hour, Dom, Month, Dow uint64
 }
 
-// A range of acceptable values.
+// bounds provides a range of acceptable values (plus a map of name to value).
 type bounds struct {
 	min, max uint
 	names    map[string]uint
@@ -49,21 +49,21 @@ var (
 
 const (
 	// Set the top bit if a star was included in the expression.
-	STAR_BIT = 1 << 63
+	starBit = 1 << 63
 )
 
-// Return the next time this schedule is activated, greater than the
-// given time.  If no time can be found to satisfy the schedule, return the
-// zero time.
+// Next returns the next time this schedule is activated, greater than the given
+// time.  If no time can be found to satisfy the schedule, return the zero time.
 func (s *Schedule) Next(t time.Time) time.Time {
+	// General approach:
 	// For Month, Day, Hour, Minute, Second:
-	// Check if the current value matches.  If yes, do nothing for that field.
+	// Check if the time value matches.  If yes, continue to the next field.
 	// If the field doesn't match the schedule, then increment the field until it matches.
 	// While incrementing the field, a wrap-around brings it back to the beginning
 	// of the field list (since it is necessary to re-verify previous field
 	// values)
 
-	// Start at the earliest possible time.
+	// Start at the earliest possible time (the upcoming second).
 	t = t.Add(1*time.Second - time.Duration(t.Nanosecond())*time.Nanosecond)
 
 	// This flag indicates whether a field has been incremented.
@@ -146,13 +146,15 @@ WRAP:
 	return t
 }
 
+// dayMatches returns true if the schedule's day-of-week and day-of-month
+// restrictions are satisfied by the given time.
 func dayMatches(s *Schedule, t time.Time) bool {
 	var (
 		domMatch bool = 1<<uint(t.Day())&s.Dom > 0
 		dowMatch bool = 1<<uint(t.Weekday())&s.Dow > 0
 	)
 
-	if s.Dom&STAR_BIT > 0 || s.Dow&STAR_BIT > 0 {
+	if s.Dom&starBit > 0 || s.Dow&starBit > 0 {
 		return domMatch && dowMatch
 	}
 	return domMatch || dowMatch

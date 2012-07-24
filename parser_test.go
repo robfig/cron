@@ -23,8 +23,8 @@ func TestRange(t *testing.T) {
 		{"5-7/2", 0, 7, 1<<5 | 1<<7},
 		{"5-7/1", 0, 7, 1<<5 | 1<<6 | 1<<7},
 
-		{"*", 1, 3, 1<<1 | 1<<2 | 1<<3 | STAR_BIT},
-		{"*/2", 1, 3, 1<<1 | 1<<3 | STAR_BIT},
+		{"*", 1, 3, 1<<1 | 1<<2 | 1<<3 | starBit},
+		{"*/2", 1, 3, 1<<1 | 1<<3 | starBit},
 	}
 
 	for _, c := range ranges {
@@ -68,10 +68,10 @@ func TestBits(t *testing.T) {
 	}
 
 	for _, c := range allBits {
-		actual := all(c.r) // all() adds the STAR_BIT, so compensate for that..
-		if c.expected|STAR_BIT != actual {
+		actual := all(c.r) // all() adds the starBit, so compensate for that..
+		if c.expected|starBit != actual {
 			t.Errorf("%d-%d/%d => (expected) %b != %b (actual)",
-				c.r.min, c.r.max, 1, c.expected|STAR_BIT, actual)
+				c.r.min, c.r.max, 1, c.expected|starBit, actual)
 		}
 	}
 
