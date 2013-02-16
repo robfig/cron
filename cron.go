@@ -23,10 +23,17 @@ type Job interface {
 	Run()
 }
 
+// The Schedule describes a job's duty cycle.
+type Schedule interface {
+	// Return the next activation time, later than the given time.
+	// Next is invoked initially, and then each time the job is run.
+	Next(time.Time) time.Time
+}
+
 // Entry consists of a schedule and the func to execute on that schedule.
 type Entry struct {
 	// The schedule on which this job should be run.
-	*Schedule
+	Schedule Schedule
 
 	// The next time the job will run. This is the zero time if Cron has not been
 	// started or this entry's schedule is unsatisfiable
@@ -70,20 +77,25 @@ func New() *Cron {
 	}
 }
 
-// jobAdapter provides a default implementation for wrapping a simple func.
-type jobAdapter func()
+// A wrapper that turns a func() into a cron.Job
+type FuncJob func()
 
-func (r jobAdapter) Run() { r() }
+func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
 func (c *Cron) AddFunc(spec string, cmd func()) {
-	c.AddJob(spec, jobAdapter(cmd))
+	c.AddJob(spec, FuncJob(cmd))
 }
 
 // AddFunc adds a Job to the Cron to be run on the given schedule.
 func (c *Cron) AddJob(spec string, cmd Job) {
+	c.Schedule(Parse(spec), cmd)
+}
+
+// Schedule adds a Job to the Cron to be run on the given schedule.
+func (c *Cron) Schedule(schedule Schedule, cmd Job) {
 	entry := &Entry{
-		Schedule: Parse(spec),
+		Schedule: schedule,
 		Job:      cmd,
 	}
 	if !c.running {

@@ -108,8 +108,30 @@ func TestRunningJobTwice(t *testing.T) {
 
 	cron := New()
 	cron.AddFunc("0 0 0 1 1 ?", func() {})
-	cron.AddFunc("* * * * * ?", func() { wg.Done() })
 	cron.AddFunc("0 0 0 31 12 ?", func() {})
+	cron.AddFunc("* * * * * ?", func() { wg.Done() })
+
+	cron.Start()
+	defer cron.Stop()
+
+	select {
+	case <-time.After(2 * ONE_SECOND):
+		t.FailNow()
+	case <-wait(wg):
+	}
+}
+
+func TestRunningMultipleSchedules(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(2)
+
+	cron := New()
+	cron.AddFunc("0 0 0 1 1 ?", func() {})
+	cron.AddFunc("0 0 0 31 12 ?", func() {})
+	cron.AddFunc("* * * * * ?", func() { wg.Done() })
+	cron.Schedule(Every(time.Minute), FuncJob(func() {}))
+	cron.Schedule(Every(time.Second), FuncJob(func() { wg.Done() }))
+	cron.Schedule(Every(time.Hour), FuncJob(func() {}))
 
 	cron.Start()
 	defer cron.Stop()
@@ -161,6 +183,8 @@ func TestJob(t *testing.T) {
 	cron.AddJob("0 0 0 1 1 ?", testJob{wg, "job1"})
 	cron.AddJob("* * * * * ?", testJob{wg, "job2"})
 	cron.AddJob("1 0 0 1 1 ?", testJob{wg, "job3"})
+	cron.Schedule(Every(5*time.Second+5*time.Nanosecond), testJob{wg, "job4"})
+	cron.Schedule(Every(5*time.Minute), testJob{wg, "job5"})
 
 	cron.Start()
 	defer cron.Stop()
@@ -172,11 +196,17 @@ func TestJob(t *testing.T) {
 	}
 
 	// Ensure the entries are in the right order.
-	answers := []string{"job2", "job1", "job3", "job0"}
-	for i, answer := range answers {
-		actual := cron.Entries()[i].Job.(testJob).name
-		if actual != answer {
-			t.Errorf("Jobs not in the right order.  (expected) %s != %s (actual)", answer, actual)
+	expecteds := []string{"job2", "job4", "job5", "job1", "job3", "job0"}
+
+	var actuals []string
+	for _, entry := range cron.Entries() {
+		actuals = append(actuals, entry.Job.(testJob).name)
+	}
+
+	for i, expected := range expecteds {
+		if actuals[i] != expected {
+			t.Errorf("Jobs not in the right order.  (expected) %s != %s (actual)", expecteds, actuals)
+			t.FailNow()
 		}
 	}
 }

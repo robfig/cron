@@ -3,6 +3,7 @@ package cron
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestRange(t *testing.T) {
@@ -95,16 +96,17 @@ func TestBits(t *testing.T) {
 	}
 }
 
-func TestSchedule(t *testing.T) {
+func TestSpecSchedule(t *testing.T) {
 	entries := []struct {
 		expr     string
 		expected Schedule
 	}{
-		{"* 5 * * * *", Schedule{all(seconds), 1 << 5, all(hours), all(dom), all(months), all(dow)}},
+		{"* 5 * * * *", &SpecSchedule{all(seconds), 1 << 5, all(hours), all(dom), all(months), all(dow)}},
+		{"@every 5m", ConstantDelaySchedule{time.Duration(5) * time.Minute}},
 	}
 
 	for _, c := range entries {
-		actual := *Parse(c.expr)
+		actual := Parse(c.expr)
 		if !reflect.DeepEqual(actual, c.expected) {
 			t.Errorf("%s => (expected) %b != %b (actual)", c.expr, c.expected, actual)
 		}
