@@ -11,9 +11,9 @@ them in their own goroutines.
 
 ```go
 c := cron.New()
-c.AddFunc("0 5 * * * *", func() { fmt.Println("Every 5 minutes") })
-c.AddFunc("@hourly",     func() { fmt.Println("Every hour") })
-c.AddFunc("@every 1h30m, func() { fmt.Println("Every hour thirty") })
+c.AddFunc("0 5 * * * *",  func() { fmt.Println("Every 5 minutes") })
+c.AddFunc("@hourly",      func() { fmt.Println("Every hour") })
+c.AddFunc("@every 1h30m", func() { fmt.Println("Every hour thirty") })
 c.Start()
 ..
 // Funcs are invoked in their own goroutine, asynchronously.
@@ -102,11 +102,8 @@ formatting the cron spec like this:
 where `<duration>` is a string accepted by
 [`time.ParseDuration`](http://golang.org/pkg/time/#ParseDuration).
 
-For example
-
-    @every 1h30m10s
-
-would indicate a schedule that activates every 1 hour, 30 minutes, 10 seconds.
+For example, `@every 1h30m10s` would indicate a schedule that activates every 
+1 hour, 30 minutes, 10 seconds.
 
 > Note: The interval does not take the job runtime into account.  For example,
 > if a job takes *3 minutes* to run, and it is scheduled to run every *5 minutes*,
