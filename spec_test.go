@@ -104,8 +104,12 @@ func TestNext(t *testing.T) {
 		// Leap year
 		{"Mon Jul 9 23:35 2012", "0 0 0 29 Feb ?", "Mon Feb 29 00:00 2016"},
 
-		// Daylight savings time
-		{"Sun Mar 11 00:00 2012 EST", "0 30 2 11 Mar ?", "Mon Mar 11 02:30 2013 EDT"},
+		// Daylight savings time EST -> EDT
+		{"2012-03-11T00:00:00-0500", "0 30 2 11 Mar ?", "2013-03-11T02:30:00-0400"},
+
+		// Daylight savings time EDT -> EST
+		{"2012-11-04T00:00:00-0400", "0 30 2 04 Nov ?", "2012-11-04T02:30:00-0500"},
+		{"2012-11-04T01:45:00-0400", "0 30 1 04 Nov ?", "2012-11-04T01:30:00-0500"},
 
 		// Unsatisfiable
 		{"Mon Jul 9 23:35 2012", "0 0 0 30 Feb ?", ""},
@@ -115,7 +119,7 @@ func TestNext(t *testing.T) {
 	for _, c := range runs {
 		actual := Parse(c.spec).Next(getTime(c.time))
 		expected := getTime(c.expected)
-		if actual != expected {
+		if !actual.Equal(expected) {
 			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.spec, expected, actual)
 		}
 	}
@@ -129,9 +133,13 @@ func getTime(value string) time.Time {
 	if err != nil {
 		t, err = time.Parse("Mon Jan 2 15:04:05 2006", value)
 		if err != nil {
-			t, err = time.Parse("Mon Jan 2 15:04 2006 MST", value)
+			t, err = time.Parse("2006-01-02T15:04:05-0700", value)
 			if err != nil {
 				panic(err)
+			}
+			// Daylight savings time tests require location
+			if ny, err := time.LoadLocation("America/New_York"); err == nil {
+				t = t.In(ny)
 			}
 		}
 	}
