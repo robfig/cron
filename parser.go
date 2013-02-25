@@ -19,14 +19,14 @@ func Parse(spec string) Schedule {
 		return parseDescriptor(spec)
 	}
 
-	// Split on whitespace.  We require 4 or 5 fields.
-	// (minute) (hour) (day of month) (month) (day of week, optional)
+	// Split on whitespace.  We require 5 or 6 fields.
+	// (second) (minute) (hour) (day of month) (month) (day of week, optional)
 	fields := strings.Fields(spec)
 	if len(fields) != 5 && len(fields) != 6 {
 		log.Panicf("Expected 5 or 6 fields, found %d: %s", len(fields), spec)
 	}
 
-	// If a fifth field is not provided (DayOfWeek), then it is equivalent to star.
+	// If a sixth field is not provided (DayOfWeek), then it is equivalent to star.
 	if len(fields) == 5 {
 		fields = append(fields, "*")
 	}
