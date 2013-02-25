@@ -154,11 +154,6 @@ func all(r bounds) uint64 {
 	return getBits(r.min, r.max, 1) | starBit
 }
 
-// first returns bits with only the first (minimum) value set.
-func first(r bounds) uint64 {
-	return getBits(r.min, r.min, 1)
-}
-
 // parseDescriptor returns a pre-defined schedule for the expression, or panics
 // if none matches.
 func parseDescriptor(spec string) Schedule {
