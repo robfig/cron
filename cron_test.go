@@ -77,6 +77,31 @@ func TestAddWhileRunning(t *testing.T) {
 	}
 }
 
+// Test timing with Entries.
+func TestSnapshotEntries(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	cron.AddFunc("@every 2s", func() { wg.Done() })
+	cron.Start()
+	defer cron.Stop()
+
+	// Cron should fire in 2 seconds. After 1 second, call Entries.
+	select {
+	case <-time.After(ONE_SECOND):
+		cron.Entries()
+	}
+
+	// Even though Entries was called, the cron should fire at the 2 second mark.
+	select {
+	case <-time.After(ONE_SECOND):
+		t.FailNow()
+	case <-wait(wg):
+	}
+
+}
+
 // Test that the entries are correctly sorted.
 // Add a bunch of long-in-the-future entries, and an immediate entry, and ensure
 // that the immediate entry runs immediately.
