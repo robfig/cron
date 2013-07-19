@@ -155,6 +155,7 @@ func (c *Cron) run() {
 				e.Prev = e.Next
 				e.Next = e.Schedule.Next(effective)
 			}
+			continue
 
 		case newEntry := <-c.add:
 			c.entries = append(c.entries, newEntry)
@@ -166,6 +167,9 @@ func (c *Cron) run() {
 		case <-c.stop:
 			return
 		}
+
+		// 'now' should be updated after newEntry and snapshot cases.
+		now = time.Now().Local()
 	}
 }
 
