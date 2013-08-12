@@ -29,7 +29,10 @@ func TestRange(t *testing.T) {
 	}
 
 	for _, c := range ranges {
-		actual := getRange(c.expr, bounds{c.min, c.max, nil})
+		actual, err := getRange(c.expr, bounds{c.min, c.max, nil})
+		if err != nil {
+			t.Fatalf("unable to get range: %s", err)
+		}
 		if actual != c.expected {
 			t.Errorf("%s => (expected) %d != %d (actual)", c.expr, c.expected, actual)
 		}
@@ -49,7 +52,10 @@ func TestField(t *testing.T) {
 	}
 
 	for _, c := range fields {
-		actual := getField(c.expr, bounds{c.min, c.max, nil})
+		actual, err := getField(c.expr, bounds{c.min, c.max, nil})
+		if err != nil {
+			t.Fatalf("unable to get field: %s", err)
+		}
 		if actual != c.expected {
 			t.Errorf("%s => (expected) %d != %d (actual)", c.expr, c.expected, actual)
 		}
@@ -106,7 +112,10 @@ func TestSpecSchedule(t *testing.T) {
 	}
 
 	for _, c := range entries {
-		actual := Parse(c.expr)
+		actual, err := Parse(c.expr)
+		if err != nil {
+			t.Fatalf("unable to parse spec (%s): %s", c.expr, err)
+		}
 		if !reflect.DeepEqual(actual, c.expected) {
 			t.Errorf("%s => (expected) %b != %b (actual)", c.expr, c.expected, actual)
 		}
