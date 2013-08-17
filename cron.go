@@ -88,8 +88,13 @@ func (c *Cron) AddFunc(spec string, cmd func()) {
 }
 
 // AddFunc adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) AddJob(spec string, cmd Job) {
-	c.Schedule(Parse(spec), cmd)
+func (c *Cron) AddJob(spec string, cmd Job) error {
+	schedule, err := Parse(spec)
+	if err != nil {
+		return err
+	}
+	c.Schedule(schedule, cmd)
+	return nil
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
