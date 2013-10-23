@@ -122,6 +122,11 @@ func (c *Cron) Start() {
 	go c.run()
 }
 
+// Remove all cron scheduler.
+func (c *Cron) Clear() {
+	c.entries =  make([]*Entry, 0, 0) 
+}
+
 // Run the scheduler.. this is private just due to the need to synchronize
 // access to the 'running' state variable.
 func (c *Cron) run() {
