@@ -105,7 +105,7 @@ func (c *Cron) RemoveJob(name string) {
 		i := c.entries.pos(name)
 
 		if i == -1 {
-			panic("Failed to find job with that name")
+			return
 		}
 
 		c.entries = c.entries[:i+copy(c.entries[i:], c.entries[i+1:])]
@@ -135,7 +135,7 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job, name string) {
 	if !c.running {
 		i := c.entries.pos(entry.Name)
 		if i != -1 {
-			panic("Duplicate names not allowed")
+			return
 		}
 		c.entries = append(c.entries, entry)
 		return
@@ -198,7 +198,7 @@ func (c *Cron) run() {
 		case newEntry := <-c.add:
 			i := c.entries.pos(newEntry.Name)
 			if i != -1 {
-				panic("Duplicate names not allowed")
+				break
 			}
 			c.entries = append(c.entries, newEntry)
 			newEntry.Next = newEntry.Schedule.Next(now)
@@ -207,7 +207,7 @@ func (c *Cron) run() {
 			i := c.entries.pos(name)
 
 			if i == -1 {
-				panic("Failed to find job with that name")
+				break
 			}
 
 			c.entries = c.entries[:i+copy(c.entries[i:], c.entries[i+1:])]
