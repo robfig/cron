@@ -7,22 +7,25 @@ A cron library for Go.  See the
 ## Usage
 
 Callers may register Funcs to be invoked on a given schedule.  Cron will run
-them in their own goroutines.
+them in their own goroutines. A name must be provided.
 
 ```go
 c := cron.New()
-c.AddFunc("0 5 * * * *",  func() { fmt.Println("Every 5 minutes") })
-c.AddFunc("@hourly",      func() { fmt.Println("Every hour") })
-c.AddFunc("@every 1h30m", func() { fmt.Println("Every hour thirty") })
+c.AddFunc("0 5 * * * *",  func() { fmt.Println("Every 5 minutes") }, "Often")
+c.AddFunc("@hourly",      func() { fmt.Println("Every hour") }, "Frequent")
+c.AddFunc("@every 1h30m", func() { fmt.Println("Every hour thirty") }, "Less Frequent")
 c.Start()
 ..
 // Funcs are invoked in their own goroutine, asynchronously.
 ...
 // Funcs may also be added to a running Cron
-c.AddFunc("@daily", func() { fmt.Println("Every day") })
+c.AddFunc("@daily", func() { fmt.Println("Every day") }, "My Job")
 ..
 // Inspect the cron job entries' next and previous run times.
 inspect(c.Entries())
+..
+// Remove an entry from the cron by name.
+c.RemoveJob("My Job")
 ..
 c.Stop()  // Stop the scheduler (does not stop any jobs already running).
 ```
