@@ -11,6 +11,10 @@ import (
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
+	// Determine if the jobs should be run
+	// as UTC time.
+	UTC bool
+
 	entries  []*Entry
 	stop     chan struct{}
 	add      chan *Entry
@@ -69,11 +73,9 @@ func (s byTime) Less(i, j int) bool {
 // New returns a new Cron job runner.
 func New() *Cron {
 	return &Cron{
-		entries:  nil,
 		add:      make(chan *Entry),
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
-		running:  false,
 	}
 }
 
@@ -127,11 +129,18 @@ func (c *Cron) Start() {
 	go c.run()
 }
 
+func (c *Cron) now() time.Time {
+	if c.UTC {
+		return time.Now().UTC()
+	}
+	return time.Now().Local()
+}
+
 // Run the scheduler.. this is private just due to the need to synchronize
 // access to the 'running' state variable.
 func (c *Cron) run() {
 	// Figure out the next activation times for each entry.
-	now := time.Now().Local()
+	now := c.now()
 	for _, entry := range c.entries {
 		entry.Next = entry.Schedule.Next(now)
 	}
@@ -174,7 +183,7 @@ func (c *Cron) run() {
 		}
 
 		// 'now' should be updated after newEntry and snapshot cases.
-		now = time.Now().Local()
+		now = c.now()
 	}
 }
 

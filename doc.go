@@ -101,8 +101,8 @@ For example, `@every 1h30m10s` would indicate a schedule that activates every
 
 Time zones
 
-All interpretation and scheduling is done in the machine's local time zone (as
-provided by the Go time package).
+All interpretation and scheduling is done in the machine's local time zone
+unless Cron.UTC is set to true.
 
 Be aware that jobs scheduled during daylight-savings leap-ahead transitions will
 not be run!
