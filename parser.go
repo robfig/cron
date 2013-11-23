@@ -8,6 +8,29 @@ import (
 	"time"
 )
 
+var fieldDefOrder = []struct {
+	name string
+	b    bounds
+}{
+	{"seconds", seconds},
+	{"minutes", minutes},
+	{"hours", hours},
+	{"day-of-month", dom},
+	{"month", months},
+	{"day-of-week", dow},
+}
+
+func getAllFields(fields []string, fieldValues ...*uint64) error {
+	for i, fdef := range fieldDefOrder {
+		v, err := getField(fields[i], fdef.b)
+		if err != nil {
+			return fmt.Errorf("Unable to get %s field, %s", fdef.name, err)
+		}
+		*fieldValues[i] = v
+	}
+	return nil
+}
+
 // Parse returns a new crontab schedule representing the given spec.
 // It returns with a descriptive error if the spec is not valid.
 //
@@ -31,41 +54,8 @@ func Parse(spec string) (Schedule, error) {
 		fields = append(fields, "*")
 	}
 
-	s, err := getField(fields[0], seconds)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to get seconds field, %s", err)
-	}
-	mi, err := getField(fields[1], minutes)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to get minutes field, %s", err)
-	}
-	h, err := getField(fields[2], hours)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to get hours field, %s", err)
-	}
-	dm, err := getField(fields[3], dom)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to get day-of-month field, %s", err)
-	}
-	mo, err := getField(fields[4], months)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to get month field, %s", err)
-	}
-	dw, err := getField(fields[5], dow)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to get day-of-week field, %s", err)
-	}
-
-	schedule := &SpecSchedule{
-		Second: s,
-		Minute: mi,
-		Hour:   h,
-		Dom:    dm,
-		Month:  mo,
-		Dow:    dw,
-	}
-
-	return schedule, nil
+	s := &SpecSchedule{}
+	return s, getAllFields(fields, &s.Second, &s.Minute, &s.Hour, &s.Dom, &s.Month, &s.Dow)
 }
 
 // getField returns an Int with the bits set representing all of the times that
