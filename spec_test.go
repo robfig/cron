@@ -56,7 +56,11 @@ func TestActivation(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		actual := Parse(test.spec).Next(getTime(test.time).Add(-1 * time.Second))
+		schedule, err := Parse(test.spec)
+		if err != nil {
+			t.Fatalf("Error during parse: %s", err)
+		}
+		actual := schedule.Next(getTime(test.time).Add(-1 * time.Second))
 		expected := getTime(test.time)
 		if test.expected && expected != actual || !test.expected && expected == actual {
 			t.Errorf("Fail evaluating %s on %s: (expected) %s != %s (actual)",
@@ -117,7 +121,11 @@ func TestNext(t *testing.T) {
 	}
 
 	for _, c := range runs {
-		actual := Parse(c.spec).Next(getTime(c.time))
+		schedule, err := Parse(c.spec)
+		if err != nil {
+			t.Fatalf("Error during parse: %s", err)
+		}
+		actual := schedule.Next(getTime(c.time))
 		expected := getTime(c.expected)
 		if !actual.Equal(expected) {
 			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.spec, expected, actual)
