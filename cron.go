@@ -16,6 +16,7 @@ type Cron struct {
 	entries  Entries
 	stop     chan struct{}
 	add      chan *Entry
+	remove   chan string
 	snapshot chan Entries
 	running  bool
 }
@@ -34,7 +35,7 @@ type Schedule interface {
 
 // Entry consists of a schedule and the func to execute on that schedule.
 type Entry struct {
-	Id *uuid.UUID
+	Id string
 
 	// The schedule on which this job should be run.
 	Schedule Schedule
@@ -51,7 +52,7 @@ type Entry struct {
 	Job Job
 }
 
-type Entries map[*uuid.UUID]*Entry
+type Entries map[string]*Entry
 
 func (es Entries) Sorted() []*Entry {
 	var el []*Entry
@@ -86,6 +87,7 @@ func New() *Cron {
 	return &Cron{
 		entries:  make(Entries),
 		add:      make(chan *Entry),
+		remove:   make(chan string),
 		stop:     make(chan struct{}),
 		snapshot: make(chan Entries),
 		running:  false,
@@ -98,29 +100,39 @@ type FuncJob func()
 func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
-func (c *Cron) AddFunc(spec string, cmd func()) {
-	c.AddJob(spec, FuncJob(cmd))
+func (c *Cron) AddFunc(spec string, cmd func()) string {
+	return c.AddJob(spec, FuncJob(cmd))
 }
 
 // AddFunc adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) AddJob(spec string, cmd Job) {
-	c.Schedule(Parse(spec), cmd)
+func (c *Cron) AddJob(spec string, cmd Job) string {
+	return c.Schedule(Parse(spec), cmd)
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) Schedule(schedule Schedule, cmd Job) {
+func (c *Cron) Schedule(schedule Schedule, cmd Job) string {
 	id, _ := uuid.NewV4()
 	entry := &Entry{
-		Id:       id,
+		Id:       id.String(),
 		Schedule: schedule,
 		Job:      cmd,
 	}
 	if !c.running {
 		c.entries[entry.Id] = entry
-		return
+		return entry.Id
 	}
 
 	c.add <- entry
+	return entry.Id
+}
+
+// Remove removes a Job from the Cron
+func (c *Cron) Remove(id string) {
+	if c.running {
+		c.remove <- id
+		return
+	}
+	delete(c.entries, id)
 }
 
 // Entries returns a snapshot of the cron entries.
@@ -177,6 +189,10 @@ func (c *Cron) run() {
 		case newEntry := <-c.add:
 			newEntry.Next = newEntry.Schedule.Next(now)
 			c.entries[newEntry.Id] = newEntry
+
+		case removeId := <-c.remove:
+			delete(c.entries, removeId)
+			continue
 
 		case <-c.snapshot:
 			c.snapshot <- c.entrySnapshot()
