@@ -224,7 +224,7 @@ func TestJob(t *testing.T) {
 	expecteds := []string{"job2", "job4", "job5", "job1", "job3", "job0"}
 
 	var actuals []string
-	for _, entry := range cron.Entries() {
+	for _, entry := range cron.Entries().Sorted() {
 		actuals = append(actuals, entry.Job.(testJob).name)
 	}
 
@@ -234,6 +234,36 @@ func TestJob(t *testing.T) {
 			t.FailNow()
 		}
 	}
+}
+
+func TestRemoveBeforeRunning(t *testing.T) {
+	cron := New()
+	cron.AddFunc("* * * * * ?", func() {})
+	remove := cron.AddFunc("* * * * * ?", func() {})
+	cron.Remove(remove)
+	if len(cron.Entries()) > 1 {
+		t.Errorf("Job wasn't removed")
+		t.FailNow()
+	}
+}
+
+func TestRemoveWhileRunning(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	remove := cron.AddFunc("* * * * * ?", func() {
+		t.Errorf("Removed job was run")
+		t.FailNow()
+	})
+	cron.Schedule(Every(ONE_SECOND), FuncJob(func() { wg.Done() }))
+
+	cron.Start()
+	defer cron.Stop()
+
+	cron.Remove(remove)
+
+	wg.Wait()
 }
 
 func wait(wg *sync.WaitGroup) chan bool {
