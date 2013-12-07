@@ -106,7 +106,10 @@ func TestSpecSchedule(t *testing.T) {
 	}
 
 	for _, c := range entries {
-		actual := Parse(c.expr)
+		actual, err := Parse(c.expr)
+		if err != nil {
+			t.Error(err)
+		}
 		if !reflect.DeepEqual(actual, c.expected) {
 			t.Errorf("%s => (expected) %b != %b (actual)", c.expr, c.expected, actual)
 		}

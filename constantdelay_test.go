@@ -34,6 +34,9 @@ func TestConstantDelayNext(t *testing.T) {
 		// Round to nearest second on the delay
 		{"Mon Jul 9 14:45 2012", 15*time.Minute + 50*time.Nanosecond, "Mon Jul 9 15:00 2012"},
 
+		// Round up to 1 second if the duration is less.
+		{"Mon Jul 9 14:45:00 2012", 15 * time.Millisecond, "Mon Jul 9 14:45:01 2012"},
+
 		// Round to nearest second when calculating the next time.
 		{"Mon Jul 9 14:45:00.005 2012", 15 * time.Minute, "Mon Jul 9 15:00 2012"},
 
