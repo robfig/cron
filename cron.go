@@ -3,10 +3,9 @@
 package cron
 
 import (
+	"math/rand"
 	"sort"
 	"time"
-
-	"github.com/nu7hatch/gouuid"
 )
 
 // Cron keeps track of any number of entries, invoking the associated func as
@@ -16,9 +15,10 @@ type Cron struct {
 	entries  []*Entry
 	stop     chan struct{}
 	add      chan *Entry
-	remove   chan string
+	remove   chan int64
 	snapshot chan []*Entry
 	running  bool
+	rand     *rand.Rand
 }
 
 // Job is an interface for submitted cron jobs.
@@ -35,7 +35,7 @@ type Schedule interface {
 
 // Entry consists of a schedule and the func to execute on that schedule.
 type Entry struct {
-	Id string
+	Id int64
 
 	// The schedule on which this job should be run.
 	Schedule Schedule
@@ -76,10 +76,11 @@ func New() *Cron {
 	return &Cron{
 		entries:  nil,
 		add:      make(chan *Entry),
-		remove:   make(chan string),
+		remove:   make(chan int64),
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
 		running:  false,
+		rand:     rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -89,20 +90,19 @@ type FuncJob func()
 func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
-func (c *Cron) AddFunc(spec string, cmd func()) string {
+func (c *Cron) AddFunc(spec string, cmd func()) int64 {
 	return c.AddJob(spec, FuncJob(cmd))
 }
 
 // AddFunc adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) AddJob(spec string, cmd Job) string {
+func (c *Cron) AddJob(spec string, cmd Job) int64 {
 	return c.Schedule(Parse(spec), cmd)
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) Schedule(schedule Schedule, cmd Job) string {
-	id, _ := uuid.NewV4()
+func (c *Cron) Schedule(schedule Schedule, cmd Job) int64 {
 	entry := &Entry{
-		Id:       id.String(),
+		Id:       rand.Int63(),
 		Schedule: schedule,
 		Job:      cmd,
 	}
@@ -115,7 +115,7 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) string {
 	return entry.Id
 }
 
-func (c *Cron) removeEntry(id string) {
+func (c *Cron) removeEntry(id int64) {
 	for i, e := range c.entries {
 		if id == e.Id {
 			copy(c.entries[i:], c.entries[i+1:])
@@ -127,7 +127,7 @@ func (c *Cron) removeEntry(id string) {
 }
 
 // Remove removes a Job from the Cron
-func (c *Cron) Remove(id string) {
+func (c *Cron) Remove(id int64) {
 	if c.running {
 		c.remove <- id
 		return
