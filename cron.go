@@ -13,11 +13,11 @@ import (
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
-	entries  Entries
+	entries  []*Entry
 	stop     chan struct{}
 	add      chan *Entry
 	remove   chan string
-	snapshot chan Entries
+	snapshot chan []*Entry
 	running  bool
 }
 
@@ -52,17 +52,6 @@ type Entry struct {
 	Job Job
 }
 
-type Entries map[string]*Entry
-
-func (es Entries) Sorted() []*Entry {
-	var el []*Entry
-	for _, e := range es {
-		el = append(el, e)
-	}
-	sort.Sort(byTime(el))
-	return el
-}
-
 // byTime is a wrapper for sorting the entry array by time
 // (with zero time at the end).
 type byTime []*Entry
@@ -85,11 +74,11 @@ func (s byTime) Less(i, j int) bool {
 // New returns a new Cron job runner.
 func New() *Cron {
 	return &Cron{
-		entries:  make(Entries),
+		entries:  nil,
 		add:      make(chan *Entry),
 		remove:   make(chan string),
 		stop:     make(chan struct{}),
-		snapshot: make(chan Entries),
+		snapshot: make(chan []*Entry),
 		running:  false,
 	}
 }
@@ -118,12 +107,23 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) string {
 		Job:      cmd,
 	}
 	if !c.running {
-		c.entries[entry.Id] = entry
+		c.entries = append(c.entries, entry)
 		return entry.Id
 	}
 
 	c.add <- entry
 	return entry.Id
+}
+
+func (c *Cron) removeEntry(id string) {
+	for i, e := range c.entries {
+		if id == e.Id {
+			copy(c.entries[i:], c.entries[i+1:])
+			c.entries[len(c.entries)-1] = nil
+			c.entries = c.entries[:len(c.entries)-1]
+			break
+		}
+	}
 }
 
 // Remove removes a Job from the Cron
@@ -132,11 +132,11 @@ func (c *Cron) Remove(id string) {
 		c.remove <- id
 		return
 	}
-	delete(c.entries, id)
+	c.removeEntry(id)
 }
 
 // Entries returns a snapshot of the cron entries.
-func (c *Cron) Entries() Entries {
+func (c *Cron) Entries() []*Entry {
 	if c.running {
 		c.snapshot <- nil
 		x := <-c.snapshot
@@ -162,21 +162,21 @@ func (c *Cron) run() {
 
 	for {
 		// Determine the next entry to run.
-		s := c.entries.Sorted()
+		sort.Sort(byTime(c.entries))
 
 		var effective time.Time
-		if len(s) == 0 || s[0].Next.IsZero() {
+		if len(c.entries) == 0 || c.entries[0].Next.IsZero() {
 			// If there are no entries yet, just sleep - it still handles new entries
 			// and stop requests.
 			effective = now.AddDate(10, 0, 0)
 		} else {
-			effective = s[0].Next
+			effective = c.entries[0].Next
 		}
 
 		select {
 		case now = <-time.After(effective.Sub(now)):
 			// Run every entry whose next time was this effective time.
-			for _, e := range s {
+			for _, e := range c.entries {
 				if e.Next != effective {
 					break
 				}
@@ -187,11 +187,11 @@ func (c *Cron) run() {
 			continue
 
 		case newEntry := <-c.add:
+			c.entries = append(c.entries, newEntry)
 			newEntry.Next = newEntry.Schedule.Next(now)
-			c.entries[newEntry.Id] = newEntry
 
 		case removeId := <-c.remove:
-			delete(c.entries, removeId)
+			c.removeEntry(removeId)
 			continue
 
 		case <-c.snapshot:
@@ -213,15 +213,15 @@ func (c *Cron) Stop() {
 }
 
 // entrySnapshot returns a copy of the current cron entry list.
-func (c *Cron) entrySnapshot() Entries {
-	entries := make(Entries)
+func (c *Cron) entrySnapshot() []*Entry {
+	entries := []*Entry{}
 	for _, e := range c.entries {
-		entries[e.Id] = &Entry{
+		entries = append(entries, &Entry{
 			Schedule: e.Schedule,
 			Next:     e.Next,
 			Prev:     e.Prev,
 			Job:      e.Job,
-		}
+		})
 	}
 	return entries
 }

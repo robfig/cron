@@ -224,7 +224,7 @@ func TestJob(t *testing.T) {
 	expecteds := []string{"job2", "job4", "job5", "job1", "job3", "job0"}
 
 	var actuals []string
-	for _, entry := range cron.Entries().Sorted() {
+	for _, entry := range cron.Entries() {
 		actuals = append(actuals, entry.Job.(testJob).name)
 	}
 
