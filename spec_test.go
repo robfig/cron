@@ -1,6 +1,7 @@
 package cron
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -109,13 +110,6 @@ func TestNext(t *testing.T) {
 		// Leap year
 		{"Mon Jul 9 23:35 2012", "0 0 0 29 Feb ?", "Mon Feb 29 00:00 2016"},
 
-		// Daylight savings time EST -> EDT
-		{"2012-03-11T00:00:00-0500", "0 30 2 11 Mar ?", "2013-03-11T02:30:00-0400"},
-
-		// Daylight savings time EDT -> EST
-		{"2012-11-04T00:00:00-0400", "0 30 2 04 Nov ?", "2012-11-04T02:30:00-0500"},
-		{"2012-11-04T01:45:00-0400", "0 30 1 04 Nov ?", "2012-11-04T01:30:00-0500"},
-
 		// Unsatisfiable
 		{"Mon Jul 9 23:35 2012", "0 0 0 30 Feb ?", ""},
 		{"Mon Jul 9 23:35 2012", "0 0 0 31 Apr ?", ""},
@@ -130,7 +124,61 @@ func TestNext(t *testing.T) {
 		actual := sched.Next(getTime(c.time))
 		expected := getTime(c.expected)
 		if !actual.Equal(expected) {
-			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.spec, expected, actual)
+			t.Errorf("%s, %s\nobtained = %v\nexpected = %v", c.time, c.spec, actual, expected)
+		}
+	}
+}
+
+func TestDST(t *testing.T) {
+	tests := []struct {
+		loc, time, spec string
+		diff            time.Duration
+	}{
+		// Sun Mar 9 2014 2:00:00 AM -> 3:00:00 AM
+		{"America/New_York", "Sun Mar 9 2014 01:00:00 -0500", "0 0 * * * *", time.Hour},
+		{"America/New_York", "Sun Mar 9 2014 01:59:59 -0500", "0 0 * * * *", time.Second},
+		{"America/New_York", "Sun Mar 9 2014 03:00:00 -0400", "0 0 * * * *", time.Hour},
+		{"America/New_York", "Sun Mar 8 2014 02:00:00 -0500", "0 0 2 * * *", time.Hour * 24},
+		{"America/New_York", "Sun Mar 9 2014 01:00:00 -0500", "0 0 2 * * *", time.Hour},
+		{"America/New_York", "Sun Mar 9 2014 01:59:59 -0500", "0 0 2 * * *", time.Second},
+		{"America/New_York", "Sun Mar 9 2014 03:00:00 -0400", "0 0 2 * * *", time.Hour * 23},
+
+		// Sun Nov 2 2014 2:00:00 AM -> 1:00:00 AM
+		{"America/New_York", "Sun Nov 2 2014 01:00:00 -0400", "0 0 * * * *", time.Hour},
+		{"America/New_York", "Sun Nov 2 2014 01:59:59 -0400", "0 0 * * * *", time.Second},
+		{"America/New_York", "Sun Nov 2 2014 01:00:00 -0400", "0 0 * * * *", time.Hour},
+		{"America/New_York", "Sun Nov 2 2014 01:00:00 -0500", "0 0 * * * *", time.Hour},
+		{"America/New_York", "Sun Nov 2 2014 01:00:00 -0400", "0 0 1 * * *", time.Hour * 25},
+		{"America/New_York", "Sun Nov 2 2014 01:00:00 -0400", "0 0 2 * * *", time.Hour},
+		{"America/New_York", "Sun Nov 2 2014 01:00:00 -0500", "0 0 2 * * *", time.Hour},
+
+		// Sun Apr 6 2014 2014 2:00:00 AM -> 1:30:00 AM
+		{"Australia/Lord_Howe", "Sun Apr 6 2014 01:30:00 +1100", "0 */30 * * *", time.Minute * 30},
+		{"Australia/Lord_Howe", "Sun Apr 6 2014 01:30:00 +1100", "0 0 2 * *", time.Hour},
+
+		// Sun Apr 6 2014 2014 2:00:00 AM -> 2:30:00 AM
+		{"Australia/Lord_Howe", "Sun Oct 5 2014 01:30:00 +1030", "0 */30 * * *", time.Minute * 30},
+		{"Australia/Lord_Howe", "Sun Oct 5 2014 01:30:00 +1030", "0 0 2 * *", time.Minute * 30},
+	}
+	for _, c := range tests {
+		loc, err := time.LoadLocation(c.loc)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		start, err := time.ParseInLocation("Mon Jan 2 2006 15:04:05 -0700", c.time, loc)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		sched, err := Parse(c.spec)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		next := sched.Next(start)
+		if diff := next.Sub(start); diff != c.diff {
+			t.Errorf("%s, %s, %s\nobtained = %v\nexpected = %v", c.loc, c.time, c.spec, diff, c.diff)
 		}
 	}
 }
@@ -151,23 +199,16 @@ func TestErrors(t *testing.T) {
 }
 
 func getTime(value string) time.Time {
-	if value == "" {
-		return time.Time{}
-	}
-	t, err := time.Parse("Mon Jan 2 15:04 2006", value)
-	if err != nil {
+	var t time.Time
+	var err error
+	switch strings.Count(value, ":") {
+	case 1:
+		t, err = time.Parse("Mon Jan 2 15:04 2006", value)
+	case 2:
 		t, err = time.Parse("Mon Jan 2 15:04:05 2006", value)
-		if err != nil {
-			t, err = time.Parse("2006-01-02T15:04:05-0700", value)
-			if err != nil {
-				panic(err)
-			}
-			// Daylight savings time tests require location
-			if ny, err := time.LoadLocation("America/New_York"); err == nil {
-				t = t.In(ny)
-			}
-		}
 	}
-
+	if err != nil {
+		panic(err)
+	}
 	return t
 }

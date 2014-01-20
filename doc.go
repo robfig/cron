@@ -104,9 +104,6 @@ Time zones
 All interpretation and scheduling is done in the machine's local time zone (as
 provided by the Go time package (http://www.golang.org/pkg/time).
 
-Be aware that jobs scheduled during daylight-savings leap-ahead transitions will
-not be run!
-
 Thread safety
 
 Since the Cron service runs concurrently with the calling code, some amount of
