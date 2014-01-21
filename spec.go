@@ -65,6 +65,7 @@ func (s *SpecSchedule) Next(t time.Time) time.Time {
 
 	var sSecond, sMinute, sHour uint64
 
+	// Record starting offset from UTC
 	_, offset := t.Zone()
 
 	// Start at the earliest possible time (the upcoming second).
@@ -77,6 +78,8 @@ func (s *SpecSchedule) Next(t time.Time) time.Time {
 	yearLimit := t.Year() + 5
 
 WRAP:
+
+	// Revert bits to their original values
 	sSecond, sMinute, sHour = s.Second, s.Minute, s.Hour
 
 	if t.Year() > yearLimit {
@@ -114,38 +117,49 @@ WRAP:
 	}
 
 DST:
+	// Has the offset changed?
 	if _, noffset := t.Zone(); noffset != offset {
+		// The diff could be in hours, minutes, or both
 		diff := noffset - offset
 
 		var h, m, s int
+		// Difference in hours (for most timezones with DST)
 		if h = diff / 3600; h != 0 {
 			if sHour&starBit == 0 {
+				// Shift bits according to offset
 				if h > 0 {
 					sHour = sHour << uint(h)
 				} else {
 					sHour = sHour >> uint(h*-1)
 				}
 			}
+			// Update current offset
 			offset += h * 3600
 		}
+		// Difference in minutes (for timezones like Lord Howe)
 		if m = (diff - h*3600) / 60; m != 0 {
 			if sMinute&starBit == 0 {
+				// Shift bits according to offset
 				if m > 0 {
 					sMinute = sMinute << uint(m)
 				} else {
 					sMinute = sMinute >> uint(m*-1)
 				}
 			}
+			// Update current offset
 			offset += m * 60
 		}
+		// Difference in seconds (least likely to happen)
 		if s = (diff - h*3600 - m*60); s != 0 {
 			if sSecond&starBit == 0 {
+				// Shift bits according to offset
 				if s > 0 {
 					sSecond = sSecond << uint(s)
 				} else {
 					sSecond = sSecond >> uint(s*-1)
 				}
 			}
+			// Update current offset
 			offset += s
 		}
 	}
@@ -161,6 +175,7 @@ DST:
 			goto WRAP
 		}
 
+		// If the offset has changed apply DST
 		if _, noffset := t.Zone(); noffset != offset {
 			goto DST
 		}
@@ -177,6 +192,7 @@ DST:
 			goto WRAP
 		}
 
+		// If the offset has changed apply DST
 		if _, noffset := t.Zone(); noffset != offset {
 			goto DST
 		}
@@ -193,6 +209,7 @@ DST:
 			goto WRAP
 		}
 
+		// If the offset has changed apply DST
 		if _, noffset := t.Zone(); noffset != offset {
 			goto DST
 		}
