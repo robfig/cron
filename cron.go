@@ -11,11 +11,13 @@ import (
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
-	entries  []*Entry
-	stop     chan struct{}
-	add      chan *Entry
-	snapshot chan []*Entry
-	running  bool
+	entries   []*Entry
+	stop      chan struct{}
+	add       chan *Entry
+	del       chan int64
+	snapshot  chan []*Entry
+	running   bool
+	increment int64
 }
 
 // Job is an interface for submitted cron jobs.
@@ -45,6 +47,9 @@ type Entry struct {
 
 	// The Job to run.
 	Job Job
+
+	// The Job id
+	Id int64
 }
 
 // byTime is a wrapper for sorting the entry array by time
@@ -69,11 +74,13 @@ func (s byTime) Less(i, j int) bool {
 // New returns a new Cron job runner.
 func New() *Cron {
 	return &Cron{
-		entries:  nil,
-		add:      make(chan *Entry),
-		stop:     make(chan struct{}),
-		snapshot: make(chan []*Entry),
-		running:  false,
+		entries:   nil,
+		add:       make(chan *Entry),
+		del:       make(chan int64),
+		stop:      make(chan struct{}),
+		snapshot:  make(chan []*Entry),
+		running:   false,
+		increment: time.Now().UnixNano(),
 	}
 }
 
@@ -83,27 +90,41 @@ type FuncJob func()
 func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
-func (c *Cron) AddFunc(spec string, cmd func()) {
-	c.AddJob(spec, FuncJob(cmd))
+func (c *Cron) AddFunc(spec string, cmd func()) int64 {
+	return c.AddJob(spec, FuncJob(cmd))
+}
+
+func (c *Cron) DelJob(id int64) {
+	if !c.running {
+		for i, entry := range c.entries {
+			if entry.Id == id {
+				c.entries = append(c.entries[:i], c.entries[i+1:]...)
+				return
+			}
+		}
+	}
+	c.del <- id
 }
 
 // AddFunc adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) AddJob(spec string, cmd Job) {
-	c.Schedule(Parse(spec), cmd)
+func (c *Cron) AddJob(spec string, cmd Job) int64 {
+	return c.Schedule(Parse(spec), cmd)
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) Schedule(schedule Schedule, cmd Job) {
+func (c *Cron) Schedule(schedule Schedule, cmd Job) int64 {
+	c.increment = c.increment + 1
 	entry := &Entry{
 		Schedule: schedule,
 		Job:      cmd,
+		Id:       c.increment,
 	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
-		return
+		return c.increment
 	}
-
 	c.add <- entry
+	return c.increment
 }
 
 // Entries returns a snapshot of the cron entries.
@@ -127,14 +148,13 @@ func (c *Cron) Start() {
 func (c *Cron) run() {
 	// Figure out the next activation times for each entry.
 	now := time.Now().Local()
+
 	for _, entry := range c.entries {
 		entry.Next = entry.Schedule.Next(now)
 	}
-
 	for {
 		// Determine the next entry to run.
 		sort.Sort(byTime(c.entries))
-
 		var effective time.Time
 		if len(c.entries) == 0 || c.entries[0].Next.IsZero() {
 			// If there are no entries yet, just sleep - it still handles new entries
@@ -160,7 +180,13 @@ func (c *Cron) run() {
 		case newEntry := <-c.add:
 			c.entries = append(c.entries, newEntry)
 			newEntry.Next = newEntry.Schedule.Next(now)
-
+		case id := <-c.del:
+			for i, entry := range c.entries {
+				if entry.Id == id {
+					c.entries = append(c.entries[:i], c.entries[i+1:]...)
+				}
+			}
+			continue
 		case <-c.snapshot:
 			c.snapshot <- c.entrySnapshot()
 

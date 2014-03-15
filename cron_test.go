@@ -11,6 +11,7 @@ import (
 // for it to run.  This amount is just slightly larger than 1 second to
 // compensate for a few milliseconds of runtime.
 const ONE_SECOND = 1*time.Second + 10*time.Millisecond
+const FIVE_SECOND = 5*time.Second + 10*time.Millisecond
 
 // Start and stop cron with no entries.
 func TestNoEntries(t *testing.T) {
@@ -60,6 +61,27 @@ func TestAddBeforeRunning(t *testing.T) {
 	}
 }
 
+//Del a job,del cron,expect it not runs.
+func TestDelBeforeRunning(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	id := cron.AddFunc("*/5 * * * * ?", func() { wg.Done() })
+	cron.AddFunc("0 0 0 1 1 ?", func() {})
+	cron.DelJob(id)
+	cron.Start()
+	defer cron.Stop()
+
+	// Give cron 2 seconds to run our job (which is always activated).
+	select {
+	case <-time.After(FIVE_SECOND):
+
+	case <-wait(wg):
+		t.FailNow()
+	}
+}
+
 // Start cron, add a job, expect it runs.
 func TestAddWhileRunning(t *testing.T) {
 	wg := &sync.WaitGroup{}
@@ -74,6 +96,28 @@ func TestAddWhileRunning(t *testing.T) {
 	case <-time.After(ONE_SECOND):
 		t.FailNow()
 	case <-wait(wg):
+	}
+}
+
+//Start cron, add a job ,and del it, expect not runs.
+func TestDelWhileRunning(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	id := cron.AddFunc("*/5 * * * * ?", func() { wg.Done() })
+	cron.AddFunc("0 0 0 1 1 ?", func() {})
+	cron.Start()
+	cron.DelJob(id)
+
+	defer cron.Stop()
+
+	// Give cron 2 seconds to run our job (which is always activated).
+	select {
+	case <-time.After(FIVE_SECOND):
+
+	case <-wait(wg):
+		t.FailNow()
 	}
 }
 
