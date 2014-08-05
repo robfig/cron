@@ -11,10 +11,10 @@ import (
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
-	entries  []*Entry
+	entries  map[string]*Entry
 	stop     chan struct{}
 	add      chan *Entry
-	snapshot chan []*Entry
+	snapshot chan map[string]*Entry
 	running  bool
 }
 
