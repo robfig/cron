@@ -11,10 +11,10 @@ import (
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
-	entries  map[string]*Entry
+	entries  []*Entry
 	stop     chan struct{}
 	add      chan *Entry
-	snapshot chan map[string]*Entry
+	snapshot chan []*Entry
 	running  bool
 }
 
@@ -45,6 +45,9 @@ type Entry struct {
 
 	// The Job to run.
 	Job Job
+
+	// The identifier to reference.
+	id string
 }
 
 // byTime is a wrapper for sorting the entry array by time
