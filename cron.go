@@ -94,11 +94,11 @@ func (c *Cron) AddFunc(spec string, cmd func()) (int, error) {
 
 // RemoveFunc removes a func from the Cron referenced by the id.
 func (c *Cron) RemoveFunc(id int) error {
-	removeJob(c.entries, id)
+	c.entries = removeJob(c.entries, id)
 	return nil
 }
 
-func removeJob(data []*Entry, id int) {
+func removeJob(data []*Entry, id int) []*Entry {
 	w := 0 // write index
 	for _, x := range data {
 		if id == x.id {
@@ -107,7 +107,7 @@ func removeJob(data []*Entry, id int) {
 		data[w] = x
 		w++
 	}
-	data = data[:w]
+	return data[:w]
 }
 
 // AddFunc adds a Job to the Cron to be run on the given schedule.
@@ -116,16 +116,17 @@ func (c *Cron) AddJob(spec string, cmd Job) (int, error) {
 	if err != nil {
 		return -1, err
 	}
-	c.Schedule(schedule, cmd)
 	c.count++
+	c.Schedule(schedule, cmd, c.count)
 	return c.count, nil
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) Schedule(schedule Schedule, cmd Job) {
+func (c *Cron) Schedule(schedule Schedule, cmd Job, id int) {
 	entry := &Entry{
 		Schedule: schedule,
 		Job:      cmd,
+		id:       id,
 	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
