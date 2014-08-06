@@ -193,20 +193,18 @@ func (c *Cron) run() {
 
 		select {
 		case now = <-time.After(effective.Sub(now)):
-			{
-				// Run every entry whose next time was this effective time.
-				for _, e := range c.entries {
-					if e.Next != effective {
-						break
-					}
-					if e.status == 0 {
-						go e.Job.Run()
-					}
-					e.Prev = e.Next
-					e.Next = e.Schedule.Next(effective)
+			// Run every entry whose next time was this effective time.
+			for _, e := range c.entries {
+				if e.Next != effective {
+					break
 				}
-				continue
+				if e.status == 0 {
+					go e.Job.Run()
+				}
+				e.Prev = e.Next
+				e.Next = e.Schedule.Next(effective)
 			}
+			continue
 
 		case newEntry := <-c.add:
 			c.entries = append(c.entries, newEntry)
