@@ -48,10 +48,10 @@ type Entry struct {
 	Job Job
 
 	// The identifier to reference the job instance.
-	id int
+	Id int
 
 	// 0: normal, 1: paused
-	status int
+	Status int
 }
 
 // byTime is a wrapper for sorting the entry array by time
@@ -99,7 +99,7 @@ func (c *Cron) AddFunc(spec string, cmd func()) (int, error) {
 func (c *Cron) RemoveFunc(id int) {
 	w := 0 // write index
 	for _, x := range c.entries {
-		if id == x.id {
+		if id == x.Id {
 			continue
 		}
 		c.entries[w] = x
@@ -110,8 +110,8 @@ func (c *Cron) RemoveFunc(id int) {
 
 func (c *Cron) PauseFunc(id int) {
 	for _, x := range c.entries {
-		if id == x.id {
-			x.status = 1
+		if id == x.Id {
+			x.Status = 1
 			break
 		}
 	}
@@ -119,8 +119,8 @@ func (c *Cron) PauseFunc(id int) {
 
 func (c *Cron) ResumeFunc(id int) {
 	for _, x := range c.entries {
-		if id == x.id {
-			x.status = 0
+		if id == x.Id {
+			x.Status = 0
 			break
 		}
 	}
@@ -142,8 +142,8 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job, id int) {
 	entry := &Entry{
 		Schedule: schedule,
 		Job:      cmd,
-		id:       id,
-		status:   0,
+		Id:       id,
+		Status:   0,
 	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
@@ -198,7 +198,7 @@ func (c *Cron) run() {
 				if e.Next != effective {
 					break
 				}
-				if e.status == 0 {
+				if e.Status == 0 {
 					go e.Job.Run()
 				}
 				e.Prev = e.Next
@@ -237,6 +237,8 @@ func (c *Cron) entrySnapshot() []*Entry {
 			Next:     e.Next,
 			Prev:     e.Prev,
 			Job:      e.Job,
+			Id:       e.Id,
+			Status:   e.Status,
 		})
 	}
 	return entries
