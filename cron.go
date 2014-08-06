@@ -14,8 +14,10 @@ type Cron struct {
 	entries  []*Entry
 	stop     chan struct{}
 	add      chan *Entry
+	remove   chan int
 	snapshot chan []*Entry
 	running  bool
+	count    int
 }
 
 // Job is an interface for submitted cron jobs.
@@ -46,15 +48,15 @@ type Entry struct {
 	// The Job to run.
 	Job Job
 
-	// The identifier to reference.
-	id string
+	// The identifier to reference the job instance.
+	id int
 }
 
 // byTime is a wrapper for sorting the entry array by time
 // (with zero time at the end).
 type byTime []*Entry
 
-func (s byTime) Len() int      { return len(s) }
+func (s byTime) Len() int { return len(s) }
 func (s byTime) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 func (s byTime) Less(i, j int) bool {
 	// Two zero times should return false.
@@ -74,9 +76,11 @@ func New() *Cron {
 	return &Cron{
 		entries:  nil,
 		add:      make(chan *Entry),
+		remove:   make(chan int),
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
 		running:  false,
+		count:    0,
 	}
 }
 
@@ -86,18 +90,42 @@ type FuncJob func()
 func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
-func (c *Cron) AddFunc(spec string, cmd func()) error {
+func (c *Cron) AddFunc(spec string, cmd func()) (int, error) {
 	return c.AddJob(spec, FuncJob(cmd))
 }
 
+// RemoveFunc removes a func from the Cron referenced by the id.
+func (c *Cron) RemoveFunc(id int) error {
+	if !c.running {
+		removeJob(c.entries, id)
+		return nil
+	}
+
+	c.remove <- id
+	return nil
+}
+
+func removeJob(data []*Entry, id int) []*Entry {
+	w := 0 // write index
+	for _, x := range data {
+		if id == x.id {
+			continue
+		}
+		data[w] = x
+		w++
+	}
+	return data[:w]
+}
+
 // AddFunc adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) AddJob(spec string, cmd Job) error {
+func (c *Cron) AddJob(spec string, cmd Job) (int, error) {
 	schedule, err := Parse(spec)
 	if err != nil {
-		return err
+		return -1, err
 	}
 	c.Schedule(schedule, cmd)
-	return nil
+	c.count++
+	return c.count, nil
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
@@ -155,22 +183,25 @@ func (c *Cron) run() {
 		select {
 		case now = <-time.After(effective.Sub(now)):
 			// Run every entry whose next time was this effective time.
-			for _, e := range c.entries {
-				if e.Next != effective {
-					break
-				}
-				go e.Job.Run()
-				e.Prev = e.Next
-				e.Next = e.Schedule.Next(effective)
+		for _, e := range c.entries {
+			if e.Next != effective {
+				break
 			}
+			go e.Job.Run()
+			e.Prev = e.Next
+			e.Next = e.Schedule.Next(effective)
+		}
 			continue
+
+		case id := <-c.remove:
+			removeJob(c.entries, id)
 
 		case newEntry := <-c.add:
 			c.entries = append(c.entries, newEntry)
 			newEntry.Next = newEntry.Schedule.Next(now)
 
 		case <-c.snapshot:
-			c.snapshot <- c.entrySnapshot()
+		c.snapshot <- c.entrySnapshot()
 
 		case <-c.stop:
 			return
@@ -192,11 +223,11 @@ func (c *Cron) entrySnapshot() []*Entry {
 	entries := []*Entry{}
 	for _, e := range c.entries {
 		entries = append(entries, &Entry{
-			Schedule: e.Schedule,
-			Next:     e.Next,
-			Prev:     e.Prev,
-			Job:      e.Job,
-		})
+				Schedule: e.Schedule,
+				Next:     e.Next,
+				Prev:     e.Prev,
+				Job:      e.Job,
+			})
 	}
 	return entries
 }
