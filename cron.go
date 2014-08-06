@@ -98,7 +98,7 @@ func (c *Cron) RemoveFunc(id int) error {
 	return nil
 }
 
-func removeJob(data []*Entry, id int) []*Entry {
+func removeJob(data []*Entry, id int) {
 	w := 0 // write index
 	for _, x := range data {
 		if id == x.id {
@@ -107,7 +107,7 @@ func removeJob(data []*Entry, id int) []*Entry {
 		data[w] = x
 		w++
 	}
-	return data[:w]
+	data = data[:w]
 }
 
 // AddFunc adds a Job to the Cron to be run on the given schedule.
