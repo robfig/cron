@@ -58,7 +58,7 @@ type Entry struct {
 // (with zero time at the end).
 type byTime []*Entry
 
-func (s byTime) Len() int { return len(s) }
+func (s byTime) Len() int      { return len(s) }
 func (s byTime) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 func (s byTime) Less(i, j int) bool {
 	// Two zero times should return false.
@@ -143,7 +143,7 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job, id int) {
 		Schedule: schedule,
 		Job:      cmd,
 		id:       id,
-		status:    0,
+		status:   0,
 	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
@@ -192,27 +192,28 @@ func (c *Cron) run() {
 		}
 
 		select {
-		case now = <-time.After(effective.Sub(now)): {
-			// Run every entry whose next time was this effective time.
-			for _, e := range c.entries {
-				if e.Next != effective {
-					break
+		case now = <-time.After(effective.Sub(now)):
+			{
+				// Run every entry whose next time was this effective time.
+				for _, e := range c.entries {
+					if e.Next != effective {
+						break
+					}
+					if e.status == 0 {
+						go e.Job.Run()
+					}
+					e.Prev = e.Next
+					e.Next = e.Schedule.Next(effective)
 				}
-				if e.status == 0 {
-					go e.Job.Run()
-				}
-				e.Prev = e.Next
-				e.Next = e.Schedule.Next(effective)
+				continue
 			}
-			continue
-		}
 
 		case newEntry := <-c.add:
 			c.entries = append(c.entries, newEntry)
 			newEntry.Next = newEntry.Schedule.Next(now)
 
 		case <-c.snapshot:
-		c.snapshot <- c.entrySnapshot()
+			c.snapshot <- c.entrySnapshot()
 
 		case <-c.stop:
 			return
@@ -234,11 +235,11 @@ func (c *Cron) entrySnapshot() []*Entry {
 	entries := []*Entry{}
 	for _, e := range c.entries {
 		entries = append(entries, &Entry{
-				Schedule: e.Schedule,
-				Next:     e.Next,
-				Prev:     e.Prev,
-				Job:      e.Job,
-			})
+			Schedule: e.Schedule,
+			Next:     e.Next,
+			Prev:     e.Prev,
+			Job:      e.Job,
+		})
 	}
 	return entries
 }
