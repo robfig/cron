@@ -14,7 +14,6 @@ type Cron struct {
 	entries  []*Entry
 	stop     chan struct{}
 	add      chan *Entry
-	remove   chan int
 	snapshot chan []*Entry
 	running  bool
 	count    int
@@ -76,7 +75,6 @@ func New() *Cron {
 	return &Cron{
 		entries:  nil,
 		add:      make(chan *Entry),
-		remove:   make(chan int),
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
 		running:  false,
@@ -96,12 +94,7 @@ func (c *Cron) AddFunc(spec string, cmd func()) (int, error) {
 
 // RemoveFunc removes a func from the Cron referenced by the id.
 func (c *Cron) RemoveFunc(id int) error {
-	if !c.running {
-		removeJob(c.entries, id)
-		return nil
-	}
-
-	c.remove <- id
+	removeJob(c.entries, id)
 	return nil
 }
 
@@ -181,20 +174,18 @@ func (c *Cron) run() {
 		}
 
 		select {
-		case now = <-time.After(effective.Sub(now)):
+		case now = <-time.After(effective.Sub(now)): {
 			// Run every entry whose next time was this effective time.
-		for _, e := range c.entries {
-			if e.Next != effective {
-				break
+			for _, e := range c.entries {
+				if e.Next != effective {
+					break
+				}
+				go e.Job.Run()
+				e.Prev = e.Next
+				e.Next = e.Schedule.Next(effective)
 			}
-			go e.Job.Run()
-			e.Prev = e.Next
-			e.Next = e.Schedule.Next(effective)
-		}
 			continue
-
-		case id := <-c.remove:
-			removeJob(c.entries, id)
+		}
 
 		case newEntry := <-c.add:
 			c.entries = append(c.entries, newEntry)
