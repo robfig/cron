@@ -49,6 +49,9 @@ type Entry struct {
 
 	// The identifier to reference the job instance.
 	id int
+
+	// 0: normal, 1: paused
+	status int
 }
 
 // byTime is a wrapper for sorting the entry array by time
@@ -93,21 +96,34 @@ func (c *Cron) AddFunc(spec string, cmd func()) (int, error) {
 }
 
 // RemoveFunc removes a func from the Cron referenced by the id.
-func (c *Cron) RemoveFunc(id int) error {
-	c.entries = removeJob(c.entries, id)
-	return nil
-}
-
-func removeJob(data []*Entry, id int) []*Entry {
+func (c *Cron) RemoveFunc(id int) {
 	w := 0 // write index
-	for _, x := range data {
+	for _, x := range c.entries {
 		if id == x.id {
 			continue
 		}
-		data[w] = x
+		c.entries[w] = x
 		w++
 	}
-	return data[:w]
+	c.entries = c.entries[:w]
+}
+
+func (c *Cron) PauseFunc(id int) {
+	for _, x := range c.entries {
+		if id == x.id {
+			x.status = 1
+			break
+		}
+	}
+}
+
+func (c *Cron) ResumeFunc(id int) {
+	for _, x := range c.entries {
+		if id == x.id {
+			x.status = 0
+			break
+		}
+	}
 }
 
 // AddFunc adds a Job to the Cron to be run on the given schedule.
@@ -127,6 +143,7 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job, id int) {
 		Schedule: schedule,
 		Job:      cmd,
 		id:       id,
+		status:    0,
 	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
@@ -181,7 +198,9 @@ func (c *Cron) run() {
 				if e.Next != effective {
 					break
 				}
-				go e.Job.Run()
+				if e.status == 0 {
+					go e.Job.Run()
+				}
 				e.Prev = e.Next
 				e.Next = e.Schedule.Next(effective)
 			}
