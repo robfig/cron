@@ -1,8 +1,9 @@
-// This library implements a cron spec parser and runner.  See the README for
+//Package cron This library implements a cron spec parser and runner.  See the README for
 // more details.
 package cron
 
 import (
+	"fmt"
 	"sort"
 	"time"
 )
@@ -77,38 +78,39 @@ func New() *Cron {
 	}
 }
 
-// A wrapper that turns a func() into a cron.Job
+//FuncJob A wrapper that turns a func() into a cron.Job
 type FuncJob func()
 
+//Run ...
 func (f FuncJob) Run() { f() }
 
-// AddFunc adds a func to the Cron to be run on the given schedule.
-func (c *Cron) AddFunc(spec string, cmd func()) error {
+//AddFunc adds a func to the Cron to be run on the given schedule.
+func (c *Cron) AddFunc(spec string, cmd func()) (*Entry, error) {
 	return c.AddJob(spec, FuncJob(cmd))
 }
 
-// AddFunc adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) AddJob(spec string, cmd Job) error {
+// AddJob adds a Job to the Cron to be run on the given schedule.
+func (c *Cron) AddJob(spec string, cmd Job) (*Entry, error) {
 	schedule, err := Parse(spec)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	c.Schedule(schedule, cmd)
-	return nil
+	entry := c.Schedule(schedule, cmd)
+	return entry, nil
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) Schedule(schedule Schedule, cmd Job) {
+func (c *Cron) Schedule(schedule Schedule, cmd Job) *Entry {
 	entry := &Entry{
 		Schedule: schedule,
 		Job:      cmd,
 	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
-		return
+		return entry
 	}
-
 	c.add <- entry
+	return entry
 }
 
 // Entries returns a snapshot of the cron entries.
@@ -119,6 +121,29 @@ func (c *Cron) Entries() []*Entry {
 		return x
 	}
 	return c.entrySnapshot()
+}
+
+//Remove old entries
+func (c *Cron) Remove(e *Entry) []*Entry {
+	var newEntries []*Entry
+	fmt.Println("Remove ---", e)
+	if c.running {
+		fmt.Println("c.running")
+		entries := c.entries
+
+		for k := range entries {
+			if entries[k] == e {
+				newEntries = append(entries[:k], entries[k+1:]...)
+			}
+		}
+	}
+	c.entries = newEntries
+	fmt.Println("New Entries Table")
+	for k, v := range c.entries {
+		fmt.Println(k, v.Schedule.Next, v.Next, v.Prev, v.Job)
+	}
+
+	return newEntries
 }
 
 // Start the cron scheduler in its own go-routine.
