@@ -3,7 +3,6 @@
 package cron
 
 import (
-	"fmt"
 	"sort"
 	"time"
 )
@@ -126,9 +125,7 @@ func (c *Cron) Entries() []*Entry {
 //Remove old entries
 func (c *Cron) Remove(e *Entry) []*Entry {
 	var newEntries []*Entry
-	fmt.Println("Remove ---", e)
 	if c.running {
-		fmt.Println("c.running")
 		entries := c.entries
 
 		for k := range entries {
@@ -138,10 +135,6 @@ func (c *Cron) Remove(e *Entry) []*Entry {
 		}
 	}
 	c.entries = newEntries
-	fmt.Println("New Entries Table")
-	for k, v := range c.entries {
-		fmt.Println(k, v.Schedule.Next, v.Next, v.Prev, v.Job)
-	}
 
 	return newEntries
 }
