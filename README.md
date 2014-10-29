@@ -6,7 +6,7 @@ package main
 
 import (
 	"fmt"
-	"cron"
+	"github.com/elgs/cron"
 	"time"
 )
 
