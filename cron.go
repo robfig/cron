@@ -50,6 +50,7 @@ type Entry struct {
 	Text string
 }
 
+// Returns next n (atmost) trigger times for this entry
 func (e *Entry) NextNTimes(n int) []time.Time {
 	out := []time.Time{}
 	tm := time.Now()
