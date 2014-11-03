@@ -8,6 +8,7 @@ import (
 // traditional crontab specification. It is computed initially and stored as bit sets.
 type SpecSchedule struct {
 	Second, Minute, Hour, Dom, Month, Dow uint64
+	Location *time.Location
 }
 
 // bounds provides a range of acceptable values (plus a map of name to value).
@@ -62,7 +63,10 @@ func (s *SpecSchedule) Next(t time.Time) time.Time {
 	// While incrementing the field, a wrap-around brings it back to the beginning
 	// of the field list (since it is necessary to re-verify previous field
 	// values)
-
+	origLocation := t.Location()
+	if s.Location != nil {
+		t = t.In(s.Location)
+	}
 	// Start at the earliest possible time (the upcoming second).
 	t = t.Add(1*time.Second - time.Duration(t.Nanosecond())*time.Nanosecond)
 
@@ -143,7 +147,7 @@ WRAP:
 		}
 	}
 
-	return t
+	return t.In(origLocation)
 }
 
 // dayMatches returns true if the schedule's day-of-week and day-of-month
