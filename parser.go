@@ -31,7 +31,7 @@ func Parse(spec string) (_ Schedule, err error) {
 	if strings.HasPrefix(spec, "TZ=") {
 		var err error
 		if loc, err = time.LoadLocation(fields[0][3:len(fields[0])]); err != nil {
-			loc = nil
+			log.Panicf("Provided bad location %s", fields[0])
 		}
 		fields = fields[1:len(fields)]
 		spec = strings.Join(fields, " ")
