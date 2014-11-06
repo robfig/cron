@@ -47,7 +47,7 @@ func Parse(spec string) (_ Schedule, err error) {
 		log.Panicf("Expected 5 or 6 fields, found %d: %s", len(fields), spec)
 	}
 
-	// If a six fields is not provided (no seconds field), then it is equivalent to 0.
+	// If six fields are not provided (no seconds field), then it is equivalent to 0.
 	if len(fields) == 5 {
 		newfields := []string{"00"}
 		newfields  = append(newfields, fields...)

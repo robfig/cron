@@ -102,11 +102,8 @@ it will have only 2 minutes of idle time between each run.
 
 Time zones
 
-If TZ= field is not provided, all interpretation and scheduling is done in the machine's local time zone (as
+If TZ= field is not provided in the spec string, all interpretation and scheduling is done in the machine's local time zone (as
 provided by the Go time package (http://www.golang.org/pkg/time).
-
-Be aware that jobs scheduled during daylight-savings leap-ahead transitions will
-not be run!
 
 Thread safety
 
