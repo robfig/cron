@@ -1,4 +1,4 @@
-// This library implements a cron spec parser and runner.  See the README for
+//Package cron implements a cron spec parser and runner.  See the README for
 // more details.
 package cron
 
@@ -16,6 +16,7 @@ type Cron struct {
 	add      chan *Entry
 	snapshot chan []*Entry
 	running  bool
+	remove   chan EntryId
 }
 
 // Job is an interface for submitted cron jobs.
@@ -48,9 +49,17 @@ type Entry struct {
 
 	// Description of the entry
 	Text string
+
+	// Unique Id of this Entry object
+	Id EntryId
 }
 
-// Returns next n (atmost) trigger times for this entry
+// EntryId uniquely identifies an Entry
+type EntryId struct {
+	entryptr *Entry
+}
+
+// NextNTimes returns next n (atmost) trigger times for this entry
 func (e *Entry) NextNTimes(n int) []time.Time {
 	out := []time.Time{}
 	tm := time.Now()
@@ -91,10 +100,11 @@ func New() *Cron {
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
 		running:  false,
+	        remove:   make(chan EntryId),
 	}
 }
 
-// A wrapper that turns a func() into a cron.Job
+//FuncJob is a wrapper that turns a func() into a cron.Job
 type FuncJob func()
 
 func (f FuncJob) Run() { f() }
@@ -104,7 +114,7 @@ func (c *Cron) AddFunc(spec string, cmd func(), text string) error {
 	return c.AddJob(spec, FuncJob(cmd), text)
 }
 
-// AddFunc adds a Job to the Cron to be run on the given schedule.
+// AddJob adds a Job to the Cron to be run on the given schedule.
 func (c *Cron) AddJob(spec string, cmd Job, text string) error {
 	schedule, err := Parse(spec)
 	if err != nil {
@@ -121,11 +131,11 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job, text string) {
 		Job:      cmd,
 	        Text:     text,
 	}
+	entry.Id = EntryId{entryptr: entry}
 	if !c.running {
 		c.entries = append(c.entries, entry)
 		return
 	}
-
 	c.add <- entry
 }
 
@@ -184,6 +194,9 @@ func (c *Cron) run() {
 			c.entries = append(c.entries, newEntry)
 			newEntry.Next = newEntry.Schedule.Next(now)
 
+		case remEntryId := <-c.remove:
+			c.removeEntry(remEntryId)
+			
 		case <-c.snapshot:
 			c.snapshot <- c.entrySnapshot()
 
@@ -194,6 +207,35 @@ func (c *Cron) run() {
 		// 'now' should be updated after newEntry and snapshot cases.
 		now = time.Now().Local()
 	}
+}
+
+// getEntryIndex returns the index of the Entry with Id = eid in entries
+func (c *Cron) getEntryIndex(eid EntryId) int {
+	idx := -1
+	for ii, entry := range c.entries {
+		if entry == eid.entryptr {
+			idx = ii
+			break
+		}
+	}
+	return idx
+}
+
+// removeEntry removes the Entry from entries with EntryId = eid
+func (c *Cron) removeEntry(eid EntryId) {
+	rmIdx := c.getEntryIndex(eid)
+	if rmIdx != -1 {
+		c.entries = append(c.entries[:rmIdx], c.entries[rmIdx+1:]...)
+	}	
+}
+
+// Remove already existing Entry specified by its EntryId
+func (c *Cron) Remove(eid EntryId) {
+	if c.running {
+		c.remove <- eid
+		return
+	}
+	c.removeEntry(eid)
 }
 
 // Stop the cron scheduler.
@@ -212,6 +254,7 @@ func (c *Cron) entrySnapshot() []*Entry {
 			Prev:     e.Prev,
 			Job:      e.Job,
 		        Text:     e.Text,
+		        Id:       e.Id,
 		})
 	}
 	return entries
