@@ -47,9 +47,6 @@ type Entry struct {
 	// The Job to run.
 	Job Job
 
-	// Description of the entry
-	Text string
-
 	// Unique Id of this Entry object
 	Id EntryId
 }
@@ -110,26 +107,25 @@ type FuncJob func()
 func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
-func (c *Cron) AddFunc(spec string, cmd func(), text string) error {
-	return c.AddJob(spec, FuncJob(cmd), text)
+func (c *Cron) AddFunc(spec string, cmd func()) error {
+	return c.AddJob(spec, FuncJob(cmd))
 }
 
 // AddJob adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) AddJob(spec string, cmd Job, text string) error {
+func (c *Cron) AddJob(spec string, cmd Job) error {
 	schedule, err := Parse(spec)
 	if err != nil {
 		return err
 	}
-	c.Schedule(schedule, cmd, text)
+	c.Schedule(schedule, cmd)
 	return nil
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) Schedule(schedule Schedule, cmd Job, text string) {
+func (c *Cron) Schedule(schedule Schedule, cmd Job) {
 	entry := &Entry{
 		Schedule: schedule,
 		Job:      cmd,
-	        Text:     text,
 	}
 	entry.Id = EntryId{entryptr: entry}
 	if !c.running {
@@ -253,7 +249,6 @@ func (c *Cron) entrySnapshot() []*Entry {
 			Next:     e.Next,
 			Prev:     e.Prev,
 			Job:      e.Job,
-		        Text:     e.Text,
 		        Id:       e.Id,
 		})
 	}
