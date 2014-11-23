@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"reflect"
 )
 
 // Many tests schedule a job for every second, and then wait at most a second
@@ -235,6 +236,109 @@ func TestJob(t *testing.T) {
 		}
 	}
 }
+
+type testJob1 struct {
+	wg   *sync.WaitGroup
+	name string
+	setTrue chan string
+}
+
+func (t testJob1) Run() {
+	t.setTrue <- t.name
+	t.wg.Done()
+}
+
+func TestRemoveWhileNotRunning(t *testing.T) {
+	cron := New()
+	numEntries := 10
+	entriesTextToRemove := map[string]bool{
+		"TEST0"                                :  true,
+		fmt.Sprintf("TEST%d", numEntries/2)    :  true,
+		fmt.Sprintf("TEST%d", numEntries-1)    :  true,
+	}
+	correctResult := map[string]bool{}
+	result := map[string]bool{}
+	
+	for ii := 0; ii < numEntries; ii++ {
+		text := fmt.Sprintf("TEST%d", ii)
+		cron.AddJob("@every 5s", testJob1{name: text})
+		correctResult[text] = true
+		if entriesTextToRemove[text] { correctResult[text] = false }
+		result[text] = false
+	}
+	
+	entries := cron.Entries()
+	for _, entry := range entries {
+		if entriesTextToRemove[entry.Job.(testJob1).name] {
+			cron.Remove(entry.Id)
+		}
+	}
+	
+	entries = cron.Entries()
+	for _, entry := range entries {
+		result[entry.Job.(testJob1).name] = true
+	}
+	
+	if !reflect.DeepEqual(correctResult, result) {
+		t.Errorf("Expected result = %v\nActual result = %v\n", correctResult, result)
+		t.FailNow()
+	}
+}
+
+
+func TestRemoveWhileRunning(t *testing.T) {
+	
+	cron := New()
+	numEntries := 10
+	entriesTextToRemove := map[string]bool{
+		"TEST0"                                :  true,
+		fmt.Sprintf("TEST%d", numEntries/2)    :  true,
+		fmt.Sprintf("TEST%d", numEntries-1)    :  true,
+	}
+	correctResult := map[string]bool{}
+	result := map[string]bool{}
+	setTrue := make(chan string)
+	wg := &sync.WaitGroup{}
+	wg.Add(numEntries - len(entriesTextToRemove))
+
+	go func() {
+		for str := range setTrue {
+			result[str] = true
+		}
+	}()
+	
+	for ii := 0; ii < numEntries; ii++ {
+		text := fmt.Sprintf("TEST%d", ii)
+		cron.AddJob("@every 5s", testJob1{name: text, setTrue: setTrue, wg: wg})
+		correctResult[text] = true
+		if entriesTextToRemove[text] { correctResult[text] = false }
+		result[text] = false
+	}
+
+	cron.Start()
+	
+	entries := cron.Entries()
+	for _, entry := range entries {
+		if entriesTextToRemove[entry.Job.(testJob1).name] {
+			cron.Remove(entry.Id)
+		}
+	}
+
+	wg.Wait()
+	
+	entries = cron.Entries()
+	for _, entry := range entries {
+		result[entry.Job.(testJob1).name] = true
+	}	
+	cron.Stop()
+	close(setTrue)
+
+	if !reflect.DeepEqual(correctResult, result) {
+		t.Errorf("Expected result = %v\nActual result = %v\n", correctResult, result)
+		t.FailNow()
+	}
+}
+
 
 func wait(wg *sync.WaitGroup) chan bool {
 	ch := make(chan bool)

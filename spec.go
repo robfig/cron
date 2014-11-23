@@ -8,6 +8,7 @@ import (
 // traditional crontab specification. It is computed initially and stored as bit sets.
 type SpecSchedule struct {
 	Second, Minute, Hour, Dom, Month, Dow uint64
+	Location *time.Location
 }
 
 // bounds provides a range of acceptable values (plus a map of name to value).
@@ -62,6 +63,16 @@ func (s *SpecSchedule) Next(t time.Time) time.Time {
 	// While incrementing the field, a wrap-around brings it back to the beginning
 	// of the field list (since it is necessary to re-verify previous field
 	// values)
+	
+	origLocation := t.Location()
+	if s.Location != nil {
+		t = t.In(s.Location)
+	}
+
+	var sSecond, sMinute, sHour uint64
+
+	// Record starting offset from UTC
+	_, offset := t.Zone()
 
 	// Start at the earliest possible time (the upcoming second).
 	t = t.Add(1*time.Second - time.Duration(t.Nanosecond())*time.Nanosecond)
@@ -73,6 +84,10 @@ func (s *SpecSchedule) Next(t time.Time) time.Time {
 	yearLimit := t.Year() + 5
 
 WRAP:
+
+	// Revert bits to their original values
+	sSecond, sMinute, sHour = s.Second, s.Minute, s.Hour
+
 	if t.Year() > yearLimit {
 		return time.Time{}
 	}
@@ -107,43 +122,106 @@ WRAP:
 		}
 	}
 
-	for 1<<uint(t.Hour())&s.Hour == 0 {
-		if !added {
-			added = true
-			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, t.Location())
-		}
-		t = t.Add(1 * time.Hour)
+DST:
+	// Has the offset changed?
+	if _, noffset := t.Zone(); noffset != offset {
+		// The diff could be in hours, minutes, or both
+		diff := noffset - offset
 
-		if t.Hour() == 0 {
-			goto WRAP
+		var h, m, s int
+		// Difference in hours (for most timezones with DST)
+		if h = diff / 3600; h != 0 {
+			if sHour&starBit == 0 {
+				// Shift bits according to offset
+				if h > 0 {
+					sHour = sHour << uint(h)
+				} else {
+					sHour = sHour >> uint(h*-1)
+				}
+			}
+			// Update current offset
+			offset += h * 3600
+		}
+		// Difference in minutes (for timezones like Lord Howe)
+		if m = (diff - h*3600) / 60; m != 0 {
+			if sMinute&starBit == 0 {
+				// Shift bits according to offset
+				if m > 0 {
+					sMinute = sMinute << uint(m)
+				} else {
+					sMinute = sMinute >> uint(m*-1)
+				}
+			}
+			// Update current offset
+			offset += m * 60
+		}
+		// Difference in seconds (least likely to happen)
+		if s = (diff - h*3600 - m*60); s != 0 {
+			if sSecond&starBit == 0 {
+				// Shift bits according to offset
+				if s > 0 {
+					sSecond = sSecond << uint(s)
+				} else {
+					sSecond = sSecond >> uint(s*-1)
+				}
+			}
+			// Update current offset
+			offset += s
 		}
 	}
 
-	for 1<<uint(t.Minute())&s.Minute == 0 {
+	for 1<<uint(t.Second())&sSecond == 0 {
 		if !added {
 			added = true
-			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), 0, 0, t.Location())
-		}
-		t = t.Add(1 * time.Minute)
-
-		if t.Minute() == 0 {
-			goto WRAP
-		}
-	}
-
-	for 1<<uint(t.Second())&s.Second == 0 {
-		if !added {
-			added = true
-			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), 0, t.Location())
+			t = t.Truncate(time.Second)
 		}
 		t = t.Add(1 * time.Second)
 
 		if t.Second() == 0 {
 			goto WRAP
 		}
+
+		// If the offset has changed apply DST
+		if _, noffset := t.Zone(); noffset != offset {
+			goto DST
+		}
 	}
 
-	return t
+	for 1<<uint(t.Minute())&sMinute == 0 {
+		if !added {
+			added = true
+			t = t.Truncate(time.Minute)
+		}
+		t = t.Add(1 * time.Minute)
+
+		if t.Minute() == 0 {
+			goto WRAP
+		}
+
+		// If the offset has changed apply DST
+		if _, noffset := t.Zone(); noffset != offset {
+			goto DST
+		}
+	}
+
+	for 1<<uint(t.Hour())&sHour == 0 {
+		if !added {
+			added = true
+			t = t.Truncate(time.Hour)
+		}
+		t = t.Add(1 * time.Hour)
+
+		if t.Hour() == 0 {
+			goto WRAP
+		}
+
+		// If the offset has changed apply DST
+		if _, noffset := t.Zone(); noffset != offset {
+			goto DST
+		}
+	}	
+
+	return t.In(origLocation)
 }
 
 // dayMatches returns true if the schedule's day-of-week and day-of-month

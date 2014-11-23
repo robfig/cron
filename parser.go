@@ -23,29 +23,45 @@ func Parse(spec string) (_ Schedule, err error) {
 		}
 	}()
 
-	if spec[0] == '@' {
-		return parseDescriptor(spec), nil
+	var loc *time.Location = nil
+	// Split on whitespace.
+	fields := strings.Fields(spec)
+
+	// Check if timezone field is present
+	if strings.HasPrefix(spec, "TZ=") {
+		var err error
+		if loc, err = time.LoadLocation(fields[0][3:len(fields[0])]); err != nil {
+			log.Panicf("Provided bad location %s", fields[0])
+		}
+		fields = fields[1:len(fields)]
+		spec = strings.Join(fields, " ")
 	}
 
-	// Split on whitespace.  We require 5 or 6 fields.
-	// (second) (minute) (hour) (day of month) (month) (day of week, optional)
-	fields := strings.Fields(spec)
+	if spec[0] == '@' {
+		return parseDescriptor(spec, loc), nil
+	}
+
+	// We require 5 or 6 fields.
+	// (second optional) (minute) (hour) (day of month) (month) (day of week)
 	if len(fields) != 5 && len(fields) != 6 {
 		log.Panicf("Expected 5 or 6 fields, found %d: %s", len(fields), spec)
 	}
 
-	// If a sixth field is not provided (DayOfWeek), then it is equivalent to star.
+	// If six fields are not provided (no seconds field), then it is equivalent to 0.
 	if len(fields) == 5 {
-		fields = append(fields, "*")
+		newfields := []string{"00"}
+		newfields  = append(newfields, fields...)
+		fields = newfields
 	}
 
 	schedule := &SpecSchedule{
-		Second: getField(fields[0], seconds),
-		Minute: getField(fields[1], minutes),
-		Hour:   getField(fields[2], hours),
-		Dom:    getField(fields[3], dom),
-		Month:  getField(fields[4], months),
-		Dow:    getField(fields[5], dow),
+		Second:    getField(fields[0], seconds),
+		Minute:    getField(fields[1], minutes),
+		Hour:      getField(fields[2], hours),
+		Dom:       getField(fields[3], dom),
+		Month:     getField(fields[4], months),
+		Dow:       getField(fields[5], dow),
+	        Location:  loc,
 	}
 
 	return schedule, nil
@@ -164,56 +180,61 @@ func all(r bounds) uint64 {
 
 // parseDescriptor returns a pre-defined schedule for the expression, or panics
 // if none matches.
-func parseDescriptor(spec string) Schedule {
+func parseDescriptor(spec string, loc *time.Location) Schedule {
 	switch spec {
 	case "@yearly", "@annually":
 		return &SpecSchedule{
-			Second: 1 << seconds.min,
-			Minute: 1 << minutes.min,
-			Hour:   1 << hours.min,
-			Dom:    1 << dom.min,
-			Month:  1 << months.min,
-			Dow:    all(dow),
+			Second:    1 << seconds.min,
+			Minute:    1 << minutes.min,
+			Hour:      1 << hours.min,
+			Dom:       1 << dom.min,
+			Month:     1 << months.min,
+			Dow:       all(dow),
+		        Location:  loc,
 		}
 
 	case "@monthly":
 		return &SpecSchedule{
-			Second: 1 << seconds.min,
-			Minute: 1 << minutes.min,
-			Hour:   1 << hours.min,
-			Dom:    1 << dom.min,
-			Month:  all(months),
-			Dow:    all(dow),
+			Second:    1 << seconds.min,
+			Minute:    1 << minutes.min,
+			Hour:      1 << hours.min,
+			Dom:       1 << dom.min,
+			Month:     all(months),
+			Dow:       all(dow),
+		        Location:  loc,
 		}
 
 	case "@weekly":
 		return &SpecSchedule{
-			Second: 1 << seconds.min,
-			Minute: 1 << minutes.min,
-			Hour:   1 << hours.min,
-			Dom:    all(dom),
-			Month:  all(months),
-			Dow:    1 << dow.min,
+			Second:    1 << seconds.min,
+			Minute:    1 << minutes.min,
+			Hour:      1 << hours.min,
+			Dom:       all(dom),
+			Month:     all(months),
+			Dow:       1 << dow.min,
+			Location:  loc,
 		}
 
 	case "@daily", "@midnight":
 		return &SpecSchedule{
-			Second: 1 << seconds.min,
-			Minute: 1 << minutes.min,
-			Hour:   1 << hours.min,
-			Dom:    all(dom),
-			Month:  all(months),
-			Dow:    all(dow),
+			Second:    1 << seconds.min,
+			Minute:    1 << minutes.min,
+			Hour:      1 << hours.min,
+			Dom:       all(dom),
+			Month:     all(months),
+			Dow:       all(dow),
+			Location:  loc,
 		}
 
 	case "@hourly":
 		return &SpecSchedule{
-			Second: 1 << seconds.min,
-			Minute: 1 << minutes.min,
-			Hour:   all(hours),
-			Dom:    all(dom),
-			Month:  all(months),
-			Dow:    all(dow),
+			Second:    1 << seconds.min,
+			Minute:    1 << minutes.min,
+			Hour:      all(hours),
+			Dom:       all(dom),
+			Month:     all(months),
+			Dow:       all(dow),
+			Location:  loc,
 		}
 	}
 
