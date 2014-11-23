@@ -1,5 +1,4 @@
-// This library implements a cron spec parser and runner.  See the README for
-// more details.
+// Package cron implements a cron spec parser and runner.
 package cron
 
 import (
@@ -23,9 +22,9 @@ type Job interface {
 	Run()
 }
 
-// The Schedule describes a job's duty cycle.
+// Schedule describes a job's duty cycle.
 type Schedule interface {
-	// Return the next activation time, later than the given time.
+	// Next returns the next activation time, later than the given time.
 	// Next is invoked initially, and then each time the job is run.
 	Next(time.Time) time.Time
 }
@@ -35,15 +34,15 @@ type Entry struct {
 	// The schedule on which this job should be run.
 	Schedule Schedule
 
-	// The next time the job will run. This is the zero time if Cron has not been
+	// Next time the job will run. This is the zero time if Cron has not been
 	// started or this entry's schedule is unsatisfiable
 	Next time.Time
 
-	// The last time this job was run. This is the zero time if the job has never
-	// been run.
+	// Prev is the last time this job was run.
+	// This is the zero time if the job has never been run.
 	Prev time.Time
 
-	// The Job to run.
+	// Job is the thing to run when the Schedule is activated.
 	Job Job
 }
 
@@ -77,7 +76,7 @@ func New() *Cron {
 	}
 }
 
-// A wrapper that turns a func() into a cron.Job
+// FuncJob is a wrapper that turns a func() into a cron.Job
 type FuncJob func()
 
 func (f FuncJob) Run() { f() }
@@ -87,7 +86,7 @@ func (c *Cron) AddFunc(spec string, cmd func()) error {
 	return c.AddJob(spec, FuncJob(cmd))
 }
 
-// AddFunc adds a Job to the Cron to be run on the given schedule.
+// AddJob adds a Job to the Cron to be run on the given schedule.
 func (c *Cron) AddJob(spec string, cmd Job) error {
 	schedule, err := Parse(spec)
 	if err != nil {
@@ -127,7 +126,7 @@ func (c *Cron) Start() {
 	go c.run()
 }
 
-// Run the scheduler.. this is private just due to the need to synchronize
+// run the scheduler.. this is private just due to the need to synchronize
 // access to the 'running' state variable.
 func (c *Cron) run() {
 	// Figure out the next activation times for each entry.
