@@ -102,9 +102,11 @@ func TestParseSchedule(t *testing.T) {
 		expr     string
 		expected Schedule
 	}{
-		{"* 5 * * * *", every5min(time.Local)},
-		{"TZ=UTC  * 5 * * * *", every5min(time.UTC)},
-		{"TZ=Asia/Tokyo * 5 * * * *", every5min(tokyo)},
+		{"0 5 * * * *", every5min(time.Local)},
+		{"5 * * * *", every5min(time.Local)},
+		{"TZ=UTC  0 5 * * * *", every5min(time.UTC)},
+		{"TZ=UTC  5 * * * *", every5min(time.UTC)},
+		{"TZ=Asia/Tokyo 0 5 * * * *", every5min(tokyo)},
 		{"@every 5m", ConstantDelaySchedule{5 * time.Minute}},
 		{"@midnight", midnight(time.Local)},
 		{"TZ=UTC  @midnight", midnight(time.UTC)},
@@ -123,7 +125,7 @@ func TestParseSchedule(t *testing.T) {
 }
 
 func every5min(loc *time.Location) *SpecSchedule {
-	return &SpecSchedule{all(seconds), 1 << 5, all(hours), all(dom), all(months), all(dow), loc}
+	return &SpecSchedule{1 << 0, 1 << 5, all(hours), all(dom), all(months), all(dow), loc}
 }
 
 func midnight(loc *time.Location) *SpecSchedule {

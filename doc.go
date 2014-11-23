@@ -29,7 +29,7 @@ A cron expression represents a set of times, using 6 space-separated fields.
 
 	Field name   | Mandatory? | Allowed values  | Allowed special characters
 	----------   | ---------- | --------------  | --------------------------
-	Seconds      | Yes        | 0-59            | * / , -
+	Seconds      | No         | 0-59            | * / , -
 	Minutes      | Yes        | 0-59            | * / , -
 	Hours        | Yes        | 0-23            | * / , -
 	Day of month | Yes        | 1-31            | * / , - ?

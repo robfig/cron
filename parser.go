@@ -39,15 +39,15 @@ func Parse(spec string) (_ Schedule, err error) {
 	}
 
 	// Split on whitespace.  We require 5 or 6 fields.
-	// (second) (minute) (hour) (day of month) (month) (day of week, optional)
+	// (second, optional) (minute) (hour) (day of month) (month) (day of week)
 	fields := strings.Fields(spec)
 	if len(fields) != 5 && len(fields) != 6 {
 		log.Panicf("Expected 5 or 6 fields, found %d: %s", len(fields), spec)
 	}
 
-	// If a sixth field is not provided (DayOfWeek), then it is equivalent to star.
+	// Add 0 for second field if necessary.
 	if len(fields) == 5 {
-		fields = append(fields, "*")
+		fields = append([]string{"0"}, fields...)
 	}
 
 	schedule := &SpecSchedule{
@@ -78,19 +78,17 @@ func getField(field string, r bounds) uint64 {
 // getRange returns the bits indicated by the given expression:
 //   number | number "-" number [ "/" number ]
 func getRange(expr string, r bounds) uint64 {
-
 	var (
 		start, end, step uint
 		rangeAndStep     = strings.Split(expr, "/")
 		lowAndHigh       = strings.Split(rangeAndStep[0], "-")
 		singleDigit      = len(lowAndHigh) == 1
+		extraStar        uint64
 	)
-
-	var extra_star uint64
 	if lowAndHigh[0] == "*" || lowAndHigh[0] == "?" {
 		start = r.min
 		end = r.max
-		extra_star = starBit
+		extraStar = starBit
 	} else {
 		start = parseIntOrName(lowAndHigh[0], r.names)
 		switch len(lowAndHigh) {
@@ -127,7 +125,7 @@ func getRange(expr string, r bounds) uint64 {
 		log.Panicf("Beginning of range (%d) beyond end of range (%d): %s", start, end, expr)
 	}
 
-	return getBits(start, end, step) | extra_star
+	return getBits(start, end, step) | extraStar
 }
 
 // parseIntOrName returns the (possibly-named) integer contained in expr.
