@@ -110,11 +110,11 @@ func TestNext(t *testing.T) {
 		{"Mon Jul 9 23:35 2012", "0 0 0 29 Feb ?", "Mon Feb 29 00:00 2016"},
 
 		// Daylight savings time EST -> EDT
-		{"2012-03-11T00:00:00-0500", "0 30 2 11 Mar ?", "2013-03-11T02:30:00-0400"},
+		{"2012-03-11T00:00:00-0500", "TZ=America/New_York 0 30 2 11 Mar ?", "2013-03-11T02:30:00-0400"},
 
 		// Daylight savings time EDT -> EST
-		{"2012-11-04T00:00:00-0400", "0 30 2 04 Nov ?", "2012-11-04T02:30:00-0500"},
-		{"2012-11-04T01:45:00-0400", "0 30 1 04 Nov ?", "2012-11-04T01:30:00-0500"},
+		{"2012-11-04T00:00:00-0400", "TZ=America/New_York 0 30 2 04 Nov ?", "2012-11-04T02:30:00-0500"},
+		{"2012-11-04T01:45:00-0400", "TZ=America/New_York 0 30 1 04 Nov ?", "2012-11-04T01:30:00-0500"},
 
 		// Unsatisfiable
 		{"Mon Jul 9 23:35 2012", "0 0 0 30 Feb ?", ""},
@@ -154,20 +154,18 @@ func getTime(value string) time.Time {
 	if value == "" {
 		return time.Time{}
 	}
-	t, err := time.Parse("Mon Jan 2 15:04 2006", value)
-	if err != nil {
-		t, err = time.Parse("Mon Jan 2 15:04:05 2006", value)
-		if err != nil {
-			t, err = time.Parse("2006-01-02T15:04:05-0700", value)
-			if err != nil {
-				panic(err)
-			}
-			// Daylight savings time tests require location
-			if ny, err := time.LoadLocation("America/New_York"); err == nil {
-				t = t.In(ny)
-			}
+
+	var layouts = []string{
+		"Mon Jan 2 15:04 2006",
+		"Mon Jan 2 15:04:05 2006",
+	}
+	for _, layout := range layouts {
+		if t, err := time.ParseInLocation(layout, value, time.Local); err == nil {
+			return t
 		}
 	}
-
-	return t
+	if t, err := time.Parse("2006-01-02T15:04:05-0700", value); err == nil {
+		return t
+	}
+	panic("could not parse time value " + value)
 }
