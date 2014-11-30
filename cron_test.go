@@ -77,6 +77,43 @@ func TestAddWhileRunning(t *testing.T) {
 	}
 }
 
+// Add a job, remove a job, start cron, expect nothing runs.
+func TestRemoveBeforeRunning(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	id, _ := cron.AddFunc("* * * * * ?", func() { wg.Done() })
+	cron.Remove(id)
+	cron.Start()
+	defer cron.Stop()
+
+	select {
+	case <-time.After(ONE_SECOND):
+		// Success, shouldn't run
+	case <-wait(wg):
+		t.FailNow()
+	}
+}
+
+// Start cron, add a job, remove it, expect it doesn't run.
+func TestRemoveWhileRunning(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	cron.Start()
+	defer cron.Stop()
+	id, _ := cron.AddFunc("* * * * * ?", func() { wg.Done() })
+	cron.Remove(id)
+
+	select {
+	case <-time.After(ONE_SECOND):
+	case <-wait(wg):
+		t.FailNow()
+	}
+}
+
 // Test timing with Entries.
 func TestSnapshotEntries(t *testing.T) {
 	wg := &sync.WaitGroup{}
@@ -113,10 +150,14 @@ func TestMultipleEntries(t *testing.T) {
 	cron := New()
 	cron.AddFunc("0 0 0 1 1 ?", func() {})
 	cron.AddFunc("* * * * * ?", func() { wg.Done() })
+	id1, _ := cron.AddFunc("* * * * * ?", func() { t.Fatal() })
+	id2, _ := cron.AddFunc("* * * * * ?", func() { t.Fatal() })
 	cron.AddFunc("0 0 0 31 12 ?", func() {})
 	cron.AddFunc("* * * * * ?", func() { wg.Done() })
 
+	cron.Remove(id1)
 	cron.Start()
+	cron.Remove(id2)
 	defer cron.Stop()
 
 	select {
