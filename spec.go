@@ -1,8 +1,6 @@
 package cron
 
-import (
-	"time"
-)
+import "time"
 
 // SpecSchedule specifies a duty cycle (to the second granularity), based on a
 // traditional crontab specification. It is computed initially and stored as bit sets.
@@ -116,7 +114,7 @@ WRAP:
 	for 1<<uint(t.Hour())&s.Hour == 0 {
 		if !added {
 			added = true
-			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, s.Location)
+			t = t.Truncate(time.Hour)
 		}
 		t = t.Add(1 * time.Hour)
 
@@ -128,7 +126,7 @@ WRAP:
 	for 1<<uint(t.Minute())&s.Minute == 0 {
 		if !added {
 			added = true
-			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), 0, 0, s.Location)
+			t = t.Truncate(time.Minute)
 		}
 		t = t.Add(1 * time.Minute)
 
@@ -140,7 +138,7 @@ WRAP:
 	for 1<<uint(t.Second())&s.Second == 0 {
 		if !added {
 			added = true
-			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), 0, s.Location)
+			t = t.Truncate(time.Second)
 		}
 		t = t.Add(1 * time.Second)
 
