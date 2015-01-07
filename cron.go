@@ -1,5 +1,5 @@
 // Package cron implements a cron spec parser and runner.
-package cron
+package cron // import "gopkg.in/robfig/cron.v2"
 
 import (
 	"sort"
