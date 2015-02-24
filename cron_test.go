@@ -189,6 +189,28 @@ func TestLocalTimezone(t *testing.T) {
 	}
 }
 
+func TestIsRunning(t *testing.T) {
+	cron := New()
+	cron.AddFunc("0 0 0 1 1 ?", func() {})
+
+	if cron.IsRunning() != false{
+		t.Errorf("The cron isn't running yet, but IsRunning return true")
+		t.FailNow()
+	}
+
+	cron.Start()
+	if cron.IsRunning() != true{
+		t.Errorf("The cron is running, but IsRunning return false")
+		t.FailNow()
+	}
+
+	cron.Stop()
+	if cron.IsRunning() != false{
+		t.Errorf("The cron is stop, but IsRunning return true")
+		t.FailNow()
+	}
+}
+
 type testJob struct {
 	wg   *sync.WaitGroup
 	name string
