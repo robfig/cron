@@ -204,12 +204,12 @@ func TestJob(t *testing.T) {
 	wg.Add(1)
 
 	cron := New()
-	cron.AddJob("0 0 0 30 Feb ?", testJob{wg, "job0"})
-	cron.AddJob("0 0 0 1 1 ?", testJob{wg, "job1"})
-	cron.AddJob("* * * * * ?", testJob{wg, "job2"})
-	cron.AddJob("1 0 0 1 1 ?", testJob{wg, "job3"})
-	cron.Schedule(Every(5*time.Second+5*time.Nanosecond), testJob{wg, "job4"})
-	cron.Schedule(Every(5*time.Minute), testJob{wg, "job5"})
+	cron.AddJob("0 0 0 30 Feb ?", testJob{wg, "job0"}, "job0")
+	cron.AddJob("0 0 0 1 1 ?", testJob{wg, "job1"}, "job1")
+	cron.AddJob("* * * * * ?", testJob{wg, "job2"}, "job2")
+	cron.AddJob("1 0 0 1 1 ?", testJob{wg, "job3"}, "job3")
+	cron.Schedule(Every(5*time.Second+5*time.Nanosecond), testJob{wg, "job4"}, "job4")
+	cron.Schedule(Every(5*time.Minute), testJob{wg, "job5"}, "job5")
 
 	cron.Start()
 	defer cron.Stop()
