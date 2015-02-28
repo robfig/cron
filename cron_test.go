@@ -83,7 +83,7 @@ func TestSnapshotEntries(t *testing.T) {
 	wg.Add(1)
 
 	cron := New()
-	cron.AddFunc("@every 2s", func() { wg.Done() })
+	cron.AddFunc("@every 2s", func() { wg.Done() }, "2s Test")
 	cron.Start()
 	defer cron.Stop()
 
