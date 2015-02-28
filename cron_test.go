@@ -178,7 +178,7 @@ func TestLocalTimezone(t *testing.T) {
 		now.Second()+1, now.Minute(), now.Hour(), now.Day(), now.Month())
 
 	cron := New()
-	cron.AddFunc(spec, func() { wg.Done() }, "localtimejob")
+	cron.AddFunc(spec, func() { wg.Done() }, "lcltimejob")
 	cron.Start()
 	defer cron.Stop()
 
