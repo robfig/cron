@@ -1,7 +1,8 @@
 // Package cron implements a cron spec parser and runner.
-package cron // import "gopkg.in/robfig/cron.v2"
+package cron
 
 import (
+	"container/heap"
 	"sort"
 	"time"
 )
@@ -10,7 +11,7 @@ import (
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
-	entries  []*Entry
+	entries  EntryQueue
 	stop     chan struct{}
 	add      chan *Entry
 	remove   chan EntryID
@@ -57,13 +58,12 @@ type Entry struct {
 // Valid returns true if this is not the zero entry.
 func (e Entry) Valid() bool { return e.ID != 0 }
 
-// byTime is a wrapper for sorting the entry array by time
-// (with zero time at the end).
-type byTime []*Entry
+// EntryQueue is a priority queue of Entries (implementing heap.Interface)
+type EntryQueue []*Entry
 
-func (s byTime) Len() int      { return len(s) }
-func (s byTime) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
-func (s byTime) Less(i, j int) bool {
+func (s EntryQueue) Len() int      { return len(s) }
+func (s EntryQueue) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s EntryQueue) Less(i, j int) bool {
 	// Two zero times should return false.
 	// Otherwise, zero is "greater" than any other time.
 	// (To sort it at the end of the list.)
@@ -74,6 +74,15 @@ func (s byTime) Less(i, j int) bool {
 		return true
 	}
 	return s[i].Next.Before(s[j].Next)
+}
+func (s *EntryQueue) Push(x interface{}) {
+	*s = append(*s, x.(*Entry))
+}
+func (s *EntryQueue) Pop() (x interface{}) {
+	n := len(*s)
+	x = (*s)[n-1]
+	*s = (*s)[0 : n-1]
+	return
 }
 
 // New returns a new Cron job runner.
@@ -116,7 +125,7 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
 		Job:      cmd,
 	}
 	if !c.running {
-		c.entries = append(c.entries, entry)
+		c.entries.Push(entry)
 	} else {
 		c.add <- entry
 	}
@@ -147,7 +156,13 @@ func (c *Cron) Remove(id EntryID) {
 	if c.running {
 		c.remove <- id
 	} else {
-		c.removeEntry(id)
+		var entries EntryQueue
+		for _, e := range c.entries {
+			if e.ID != id {
+				entries = append(entries, e)
+			}
+		}
+		c.entries = entries
 	}
 }
 
@@ -165,11 +180,9 @@ func (c *Cron) run() {
 	for _, entry := range c.entries {
 		entry.Next = entry.Schedule.Next(now)
 	}
+	heap.Init(&c.entries)
 
 	for {
-		// Determine the next entry to run.
-		sort.Sort(byTime(c.entries))
-
 		var effective time.Time
 		if len(c.entries) == 0 || c.entries[0].Next.IsZero() {
 			// If there are no entries yet, just sleep - it still handles new entries
@@ -182,25 +195,31 @@ func (c *Cron) run() {
 		select {
 		case now = <-time.After(effective.Sub(now)):
 			// Run every entry whose next time was this effective time.
-			for _, e := range c.entries {
-				if e.Next != effective {
-					break
-				}
+			e := c.entries[0]
+			for e.Next == effective {
 				go e.Job.Run()
 				e.Prev = e.Next
 				e.Next = e.Schedule.Next(effective)
+				heap.Fix(&c.entries, 0)
+				e = c.entries[0]
 			}
+
 			continue
 
 		case newEntry := <-c.add:
-			c.entries = append(c.entries, newEntry)
+			heap.Push(&c.entries, newEntry)
 			newEntry.Next = newEntry.Schedule.Next(now)
 
 		case <-c.snapshot:
 			c.snapshot <- c.entrySnapshot()
 
 		case id := <-c.remove:
-			c.removeEntry(id)
+			for idx, e := range c.entries {
+				if e.ID == id {
+					heap.Remove(&c.entries, idx)
+					break
+				}
+			}
 
 		case <-c.stop:
 			return
@@ -218,19 +237,13 @@ func (c *Cron) Stop() {
 
 // entrySnapshot returns a copy of the current cron entry list.
 func (c *Cron) entrySnapshot() []Entry {
-	var entries = make([]Entry, len(c.entries))
-	for i, e := range c.entries {
-		entries[i] = *e
+	queue := make(EntryQueue, len(c.entries))
+	copy(queue, c.entries)
+	sort.Sort(queue)
+
+	entries := make([]Entry, len(c.entries))
+	for i, _ := range c.entries {
+		entries[i] = *queue[i]
 	}
 	return entries
-}
-
-func (c *Cron) removeEntry(id EntryID) {
-	var entries []*Entry
-	for _, e := range c.entries {
-		if e.ID != id {
-			entries = append(entries, e)
-		}
-	}
-	c.entries = entries
 }
