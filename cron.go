@@ -16,6 +16,7 @@ type Cron struct {
 	add      chan *Entry
 	snapshot chan []*Entry
 	running  bool
+	count    int
 }
 
 // Job is an interface for submitted cron jobs.
@@ -45,6 +46,12 @@ type Entry struct {
 
 	// The Job to run.
 	Job Job
+
+	// The identifier to reference the job instance.
+	Id int
+
+	// 0: normal, 1: paused
+	Status int
 }
 
 // byTime is a wrapper for sorting the entry array by time
@@ -74,6 +81,7 @@ func New() *Cron {
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
 		running:  false,
+		count:    0,
 	}
 }
 
@@ -83,25 +91,69 @@ type FuncJob func()
 func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
-func (c *Cron) AddFunc(spec string, cmd func()) error {
+func (c *Cron) AddFunc(spec string, cmd func()) (int, error) {
 	return c.AddJob(spec, FuncJob(cmd))
 }
 
+// RemoveFunc removes a func from the Cron referenced by the id.
+func (c *Cron) RemoveFunc(id int) {
+	w := 0 // write index
+	for _, x := range c.entries {
+		if id == x.Id {
+			continue
+		}
+		c.entries[w] = x
+		w++
+	}
+	c.entries = c.entries[:w]
+}
+
+func (c *Cron) PauseFunc(id int) {
+	for _, x := range c.entries {
+		if id == x.Id {
+			x.Status = 1
+			break
+		}
+	}
+}
+
+func (c *Cron) ResumeFunc(id int) {
+	for _, x := range c.entries {
+		if id == x.Id {
+			x.Status = 0
+			break
+		}
+	}
+}
+
+// Status inquires the status of a job, 0: running, 1: paused, -1: not started.
+func (c *Cron) Status(id int) int {
+	for _, x := range c.entries {
+		if id == x.Id {
+			return x.Status
+		}
+	}
+	return -1
+}
+
 // AddFunc adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) AddJob(spec string, cmd Job) error {
+func (c *Cron) AddJob(spec string, cmd Job) (int, error) {
 	schedule, err := Parse(spec)
 	if err != nil {
-		return err
+		return -1, err
 	}
-	c.Schedule(schedule, cmd)
-	return nil
+	c.count++
+	c.Schedule(schedule, cmd, c.count)
+	return c.count, nil
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) Schedule(schedule Schedule, cmd Job) {
+func (c *Cron) Schedule(schedule Schedule, cmd Job, id int) {
 	entry := &Entry{
 		Schedule: schedule,
 		Job:      cmd,
+		Id:       id,
+		Status:   0,
 	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
@@ -156,7 +208,9 @@ func (c *Cron) run() {
 				if e.Next != effective {
 					break
 				}
-				go e.Job.Run()
+				if e.Status == 0 {
+					go e.Job.Run()
+				}
 				e.Prev = e.Next
 				e.Next = e.Schedule.Next(effective)
 			}
@@ -193,6 +247,8 @@ func (c *Cron) entrySnapshot() []*Entry {
 			Next:     e.Next,
 			Prev:     e.Prev,
 			Job:      e.Job,
+			Id:       e.Id,
+			Status:   e.Status,
 		})
 	}
 	return entries
