@@ -126,6 +126,16 @@ func (c *Cron) ResumeFunc(id int) {
 	}
 }
 
+// Status inquires the status of a job, 0: running, 1: paused, -1: not started.
+func (c *Cron) Status(id int) int {
+	for _, x := range c.entries {
+		if id == x.Id {
+			return x.Status
+		}
+	}
+	return -1
+}
+
 // AddFunc adds a Job to the Cron to be run on the given schedule.
 func (c *Cron) AddJob(spec string, cmd Job) (int, error) {
 	schedule, err := Parse(spec)
