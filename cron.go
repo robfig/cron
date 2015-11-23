@@ -182,16 +182,14 @@ func (c *Cron) Start() {
 // Run the scheduler.. this is private just due to the need to synchronize
 // access to the 'running' state variable.
 func (c *Cron) run() {
-	// Figure out the next activation times for each entry.
-	now := time.Now().Local()
-	for _, entry := range c.entries {
-		entry.Next = entry.Schedule.Next(now)
-	}
-
 	for {
+		// Figure out the next activation times for each entry.
+		now := time.Now().Local()
+		for _, entry := range c.entries {
+			entry.Next = entry.Schedule.Next(now)
+		}
 		// Determine the next entry to run.
 		sort.Sort(byTime(c.entries))
-
 		var effective time.Time
 		if len(c.entries) == 0 || c.entries[0].Next.IsZero() {
 			// If there are no entries yet, just sleep - it still handles new entries
@@ -200,7 +198,6 @@ func (c *Cron) run() {
 		} else {
 			effective = c.entries[0].Next
 		}
-
 		select {
 		case now = <-time.After(effective.Sub(now)):
 			// Run every entry whose next time was this effective time.
@@ -228,7 +225,7 @@ func (c *Cron) run() {
 		}
 
 		// 'now' should be updated after newEntry and snapshot cases.
-		now = time.Now().Local()
+		//		now = time.Now().Local()
 	}
 }
 
