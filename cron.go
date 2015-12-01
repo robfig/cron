@@ -118,7 +118,7 @@ func (c *Cron) Schedule(key string, schedule Schedule, cmd Job) {
 	c.add <- entry
 }
 
-// Remove locates a Job and deletes the entry
+// Remove locates Jobs matching the key, and removes them
 func (c *Cron) Remove(key string) {
 	if !c.running {
 		c.removeEntry(key)
