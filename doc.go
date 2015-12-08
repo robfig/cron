@@ -4,21 +4,26 @@ Package cron implements a cron spec parser and job runner.
 Usage
 
 Callers may register Funcs to be invoked on a given schedule.  Cron will run
-them in their own goroutines.
+them in their own goroutines. A key is provided, allowing for later reference and
+removal of jobs.
 
 	c := cron.New()
-	c.AddFunc("0 30 * * * *", func() { fmt.Println("Every hour on the half hour") })
-	c.AddFunc("@hourly",      func() { fmt.Println("Every hour") })
-	c.AddFunc("@every 1h30m", func() { fmt.Println("Every hour thirty") })
+	c.AddFunc("sample1", "0 30 * * * *", func() { fmt.Println("Every hour on the half hour") })
+	c.AddFunc("sample2", "@hourly",      func() { fmt.Println("Every hour") })
+	c.AddFunc("sample3", "@every 1h30m", func() { fmt.Println("Every hour thirty") })
+	c.Remove("sample2")
 	c.Start()
 	..
 	// Funcs are invoked in their own goroutine, asynchronously.
 	...
 	// Funcs may also be added to a running Cron
-	c.AddFunc("@daily", func() { fmt.Println("Every day") })
+	c.AddFunc("sample4", "@daily", func() { fmt.Println("Every day") })
 	..
 	// Inspect the cron job entries' next and previous run times.
 	inspect(c.Entries())
+	..
+	// Jobs can also be removed from a running Cron
+	c.Remove("sample4")
 	..
 	c.Stop()  // Stop the scheduler (does not stop any jobs already running).
 

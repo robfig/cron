@@ -4,6 +4,7 @@ package cron
 
 import (
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -14,6 +15,7 @@ type Cron struct {
 	entries  []*Entry
 	stop     chan struct{}
 	add      chan *Entry
+	remove   chan string
 	snapshot chan []*Entry
 	running  bool
 }
@@ -32,6 +34,9 @@ type Schedule interface {
 
 // Entry consists of a schedule and the func to execute on that schedule.
 type Entry struct {
+	// The key for the schedule
+	Key string
+
 	// The schedule on which this job should be run.
 	Schedule Schedule
 
@@ -71,6 +76,7 @@ func New() *Cron {
 	return &Cron{
 		entries:  nil,
 		add:      make(chan *Entry),
+		remove:   make(chan string),
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
 		running:  false,
@@ -83,23 +89,24 @@ type FuncJob func()
 func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
-func (c *Cron) AddFunc(spec string, cmd func()) error {
-	return c.AddJob(spec, FuncJob(cmd))
+func (c *Cron) AddFunc(key, spec string, cmd func()) error {
+	return c.AddJob(key, spec, FuncJob(cmd))
 }
 
 // AddFunc adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) AddJob(spec string, cmd Job) error {
+func (c *Cron) AddJob(key, spec string, cmd Job) error {
 	schedule, err := Parse(spec)
 	if err != nil {
 		return err
 	}
-	c.Schedule(schedule, cmd)
+	c.Schedule(key, schedule, cmd)
 	return nil
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) Schedule(schedule Schedule, cmd Job) {
+func (c *Cron) Schedule(key string, schedule Schedule, cmd Job) {
 	entry := &Entry{
+		Key:      key,
 		Schedule: schedule,
 		Job:      cmd,
 	}
@@ -109,6 +116,16 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) {
 	}
 
 	c.add <- entry
+}
+
+// Remove locates Jobs matching the key, and removes them
+func (c *Cron) Remove(key string) {
+	if !c.running {
+		c.removeEntry(key)
+		return
+	}
+
+	c.remove <- key
 }
 
 // Entries returns a snapshot of the cron entries.
@@ -166,6 +183,9 @@ func (c *Cron) run() {
 			c.entries = append(c.entries, newEntry)
 			newEntry.Next = newEntry.Schedule.Next(now)
 
+		case key := <-c.remove:
+			c.removeEntry(key)
+
 		case <-c.snapshot:
 			c.snapshot <- c.entrySnapshot()
 
@@ -199,4 +219,14 @@ func (c *Cron) entrySnapshot() []*Entry {
 		})
 	}
 	return entries
+}
+
+func (c *Cron) removeEntry(key string) {
+WRAP:
+	for i, e := range c.entries {
+		if strings.EqualFold(e.Key, key) {
+			c.entries = append(c.entries[:i], c.entries[i+1:]...)
+			goto WRAP
+		}
+	}
 }
