@@ -103,6 +103,7 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) *Entry {
 		Schedule: schedule,
 		Job:      cmd,
 	}
+
 	if !c.running {
 		c.entries = append(c.entries, entry)
 		return entry
@@ -157,10 +158,20 @@ func (c *Cron) run() {
 				if e.Next != effective {
 					break
 				}
-				e.Prev = e.Next
-				e.Next = e.Schedule.Next(effective)
-				go e.Job.Run()
+
+				// We update the Entry.Prev only *after*
+				// actually running the Job. It is intuitive
+				// that while the Job is running, the Entry
+				// has sane information: Next is actually the next run
+				// and Prev is actually the previous run.
+				go func(e *Entry) {
+					tmp := e.Next
+					e.Next = e.Schedule.Next(effective)
+					e.Job.Run()	
+					e.Prev = tmp
+				}(e)
 			}
+
 			continue
 
 		case newEntry := <-c.add:
