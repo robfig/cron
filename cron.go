@@ -3,6 +3,7 @@
 package cron
 
 import (
+	"fmt"
 	"sort"
 	"time"
 )
@@ -127,6 +128,15 @@ func (c *Cron) Start() {
 	go c.run()
 }
 
+func (c *Cron) runWithRecovery(j Job) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("Cron function panicked: ", r)
+		}
+	}()
+	j.Run()
+}
+
 // Run the scheduler.. this is private just due to the need to synchronize
 // access to the 'running' state variable.
 func (c *Cron) run() {
@@ -156,7 +166,7 @@ func (c *Cron) run() {
 				if e.Next != effective {
 					break
 				}
-				go e.Job.Run()
+				go c.runWithRecovery(e.Job)
 				e.Prev = e.Next
 				e.Next = e.Schedule.Next(effective)
 			}
