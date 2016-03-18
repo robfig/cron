@@ -130,13 +130,14 @@ func (c *Cron) Start() {
 // Run the scheduler.. this is private just due to the need to synchronize
 // access to the 'running' state variable.
 func (c *Cron) run() {
-	// Figure out the next activation times for each entry.
-	now := time.Now().Local()
-	for _, entry := range c.entries {
-		entry.Next = entry.Schedule.Next(now)
-	}
 
 	for {
+		// Figure out the next activation times for each entry.
+		now := time.Now().Local()
+		for _, entry := range c.entries {
+			entry.Next = entry.Schedule.Next(now)
+		}
+
 		// Determine the next entry to run.
 		sort.Sort(byTime(c.entries))
 
