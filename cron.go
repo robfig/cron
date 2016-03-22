@@ -178,8 +178,11 @@ func (c *Cron) run() {
 	}
 }
 
-// Stop the cron scheduler.
+// Stop stops the cron scheduler if it is running; otherwise it does nothing.
 func (c *Cron) Stop() {
+	if !c.running {
+		return
+	}
 	c.stop <- struct{}{}
 	c.running = false
 }

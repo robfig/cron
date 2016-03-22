@@ -189,6 +189,13 @@ func TestLocalTimezone(t *testing.T) {
 	}
 }
 
+// Test that calling stop before start silently returns without
+// blocking the stop channel.
+func TestStopWithoutStart(t *testing.T) {
+	cron := New()
+	cron.Stop()
+}
+
 type testJob struct {
 	wg   *sync.WaitGroup
 	name string
