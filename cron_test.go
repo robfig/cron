@@ -77,6 +77,22 @@ func TestAddWhileRunning(t *testing.T) {
 	}
 }
 
+// Test for #34. Adding a job after calling start results in multiple job invocations
+func TestAddWhileRunningWithDelay(t *testing.T) {
+	cron := New()
+	cron.Start()
+	defer cron.Stop()
+	time.Sleep(5 * time.Second)
+	var calls = 0
+	cron.AddFunc("* * * * * *", func() { calls += 1 });
+
+	<- time.After(ONE_SECOND)
+	if calls != 1 {
+		fmt.Printf("called %d times, expected 1\n", calls)
+		t.Fail()
+	}
+}
+
 // Test timing with Entries.
 func TestSnapshotEntries(t *testing.T) {
 	wg := &sync.WaitGroup{}
