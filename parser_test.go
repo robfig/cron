@@ -96,13 +96,21 @@ func TestBits(t *testing.T) {
 	}
 }
 
-func TestSpecSchedule(t *testing.T) {
+func TestParseSchedule(t *testing.T) {
+	tokyo, _ := time.LoadLocation("Asia/Tokyo")
 	entries := []struct {
 		expr     string
 		expected Schedule
 	}{
-		{"* 5 * * * *", &SpecSchedule{all(seconds), 1 << 5, all(hours), all(dom), all(months), all(dow)}},
-		{"@every 5m", ConstantDelaySchedule{time.Duration(5) * time.Minute}},
+		{"0 5 * * * *", every5min(time.Local)},
+		{"5 * * * *", every5min(time.Local)},
+		{"TZ=UTC  0 5 * * * *", every5min(time.UTC)},
+		{"TZ=UTC  5 * * * *", every5min(time.UTC)},
+		{"TZ=Asia/Tokyo 0 5 * * * *", every5min(tokyo)},
+		{"@every 5m", ConstantDelaySchedule{5 * time.Minute}},
+		{"@midnight", midnight(time.Local)},
+		{"TZ=UTC  @midnight", midnight(time.UTC)},
+		{"TZ=Asia/Tokyo @midnight", midnight(tokyo)},
 	}
 
 	for _, c := range entries {
@@ -111,7 +119,15 @@ func TestSpecSchedule(t *testing.T) {
 			t.Error(err)
 		}
 		if !reflect.DeepEqual(actual, c.expected) {
-			t.Errorf("%s => (expected) %b != %b (actual)", c.expr, c.expected, actual)
+			t.Errorf("%s => (expected) %v != %v (actual)", c.expr, c.expected, actual)
 		}
 	}
+}
+
+func every5min(loc *time.Location) *SpecSchedule {
+	return &SpecSchedule{1 << 0, 1 << 5, all(hours), all(dom), all(months), all(dow), loc}
+}
+
+func midnight(loc *time.Location) *SpecSchedule {
+	return &SpecSchedule{1, 1, 1, all(dom), all(months), all(dow), loc}
 }
