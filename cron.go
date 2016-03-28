@@ -87,7 +87,7 @@ func (c *Cron) AddFunc(spec string, cmd func()) error {
 	return c.AddJob(spec, FuncJob(cmd))
 }
 
-// AddFunc adds a Job to the Cron to be run on the given schedule.
+// AddJob adds a Job to the Cron to be run on the given schedule.
 func (c *Cron) AddJob(spec string, cmd Job) error {
 	schedule, err := Parse(spec)
 	if err != nil {
