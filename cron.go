@@ -3,7 +3,8 @@
 package cron
 
 import (
-	"fmt"
+	"log"
+	"runtime"
 	"sort"
 	"time"
 )
@@ -17,6 +18,7 @@ type Cron struct {
 	add      chan *Entry
 	snapshot chan []*Entry
 	running  bool
+	ErrorLog *log.Logger
 }
 
 // Job is an interface for submitted cron jobs.
@@ -75,6 +77,7 @@ func New() *Cron {
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
 		running:  false,
+		ErrorLog: nil,
 	}
 }
 
@@ -131,7 +134,10 @@ func (c *Cron) Start() {
 func (c *Cron) runWithRecovery(j Job) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Println("Cron function panicked: ", r)
+			const size = 64 << 10
+			buf := make([]byte, size)
+			buf = buf[:runtime.Stack(buf, false)]
+			c.logf("cron: panic running job: %v\n%s", r, buf)
 		}
 	}()
 	j.Run()
@@ -185,6 +191,15 @@ func (c *Cron) run() {
 
 		// 'now' should be updated after newEntry and snapshot cases.
 		now = time.Now().Local()
+	}
+}
+
+// Logs an error to stderr or to the configured error log
+func (c *Cron) logf(format string, args ...interface{}) {
+	if c.ErrorLog != nil {
+		c.ErrorLog.Printf(format, args...)
+	} else {
+		log.Printf(format, args...)
 	}
 }
 
