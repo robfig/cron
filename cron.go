@@ -4,7 +4,13 @@ package cron
 
 import (
 	"sort"
+	"sync/atomic"
 	"time"
+)
+
+const (
+	A_TRUE  = 0
+	A_FALSE = 1
 )
 
 // Cron keeps track of any number of entries, invoking the associated func as
@@ -15,7 +21,7 @@ type Cron struct {
 	stop     chan struct{}
 	add      chan *Entry
 	snapshot chan []*Entry
-	running  bool
+	running  *int32
 }
 
 // Job is an interface for submitted cron jobs.
@@ -68,12 +74,13 @@ func (s byTime) Less(i, j int) bool {
 
 // New returns a new Cron job runner.
 func New() *Cron {
+	var notRunning int32 = A_FALSE
 	return &Cron{
 		entries:  nil,
 		add:      make(chan *Entry),
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
-		running:  false,
+		running:  &notRunning,
 	}
 }
 
@@ -103,7 +110,7 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) {
 		Schedule: schedule,
 		Job:      cmd,
 	}
-	if !c.running {
+	if atomic.LoadInt32(c.running) == A_FALSE {
 		c.entries = append(c.entries, entry)
 		return
 	}
@@ -113,7 +120,7 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) {
 
 // Entries returns a snapshot of the cron entries.
 func (c *Cron) Entries() []*Entry {
-	if c.running {
+	if atomic.LoadInt32(c.running) == A_TRUE {
 		c.snapshot <- nil
 		x := <-c.snapshot
 		return x
@@ -123,8 +130,9 @@ func (c *Cron) Entries() []*Entry {
 
 // Start the cron scheduler in its own go-routine.
 func (c *Cron) Start() {
-	c.running = true
-	go c.run()
+	if atomic.CompareAndSwapInt32(c.running, A_FALSE, A_TRUE) {
+		go c.run()
+	}
 }
 
 // Run the scheduler.. this is private just due to the need to synchronize
@@ -184,7 +192,7 @@ func (c *Cron) Stop() {
 		return
 	}
 	c.stop <- struct{}{}
-	c.running = false
+	atomic.StoreInt32(c.running, A_FALSE)
 }
 
 // entrySnapshot returns a copy of the current cron entry list.
