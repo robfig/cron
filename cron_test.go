@@ -12,6 +12,38 @@ import (
 // compensate for a few milliseconds of runtime.
 const ONE_SECOND = 1*time.Second + 10*time.Millisecond
 
+func TestFuncPanicRecovery(t *testing.T) {
+	cron := New()
+	cron.Start()
+	defer cron.Stop()
+	cron.AddFunc("* * * * * ?", func() { panic("YOLO") })
+
+	select {
+	case <-time.After(ONE_SECOND):
+		return
+	}
+}
+
+type DummyJob struct{}
+
+func (d DummyJob) Run() {
+	panic("YOLO")
+}
+
+func TestJobPanicRecovery(t *testing.T) {
+	var job DummyJob
+
+	cron := New()
+	cron.Start()
+	defer cron.Stop()
+	cron.AddJob("* * * * * ?", job)
+
+	select {
+	case <-time.After(ONE_SECOND):
+		return
+	}
+}
+
 // Start and stop cron with no entries.
 func TestNoEntries(t *testing.T) {
 	cron := New()
