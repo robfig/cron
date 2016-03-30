@@ -121,7 +121,7 @@ func (c *Cron) Entries() []*Entry {
 	return c.entrySnapshot()
 }
 
-// Start the cron scheduler in its own go-routine.
+// Start the cron scheduler in its own go-routine if it is not running, otherwize it does nothing.
 func (c *Cron) Start() {
 	if c.running {
 		return
