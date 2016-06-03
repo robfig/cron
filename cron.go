@@ -165,8 +165,9 @@ func (c *Cron) run() {
 			effective = c.entries[0].Next
 		}
 
+		timer := time.NewTimer(effective.Sub(now))
 		select {
-		case now = <-time.After(effective.Sub(now)):
+		case now = <-timer.C:
 			// Run every entry whose next time was this effective time.
 			for _, e := range c.entries {
 				if e.Next != effective {
@@ -186,11 +187,13 @@ func (c *Cron) run() {
 			c.snapshot <- c.entrySnapshot()
 
 		case <-c.stop:
+			timer.Stop()
 			return
 		}
 
 		// 'now' should be updated after newEntry and snapshot cases.
 		now = time.Now().Local()
+		timer.Stop()
 	}
 }
 
