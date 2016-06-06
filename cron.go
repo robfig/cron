@@ -197,7 +197,7 @@ func (c *Cron) run() {
 		}
 
 		// 'now' should be updated after newEntry and snapshot cases.
-		now = time.Now().Local()
+		now = time.Now().In(c.location)
 	}
 }
 
