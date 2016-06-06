@@ -237,6 +237,34 @@ func TestLocalTimezone(t *testing.T) {
 	}
 }
 
+
+// Test that the cron is run in the given time zone (as opposed to local).
+func TestNonLocalTimezone(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	loc, err := time.LoadLocation("Atlantic/Cape_Verde")
+	if err != nil {
+		fmt.Printf("Failed to load time zone Atlantic/Cape_Verde: %+v", err)
+		t.Fail()
+	}
+
+	now := time.Now().In(loc)
+	spec := fmt.Sprintf("%d %d %d %d %d ?",
+		now.Second()+1, now.Minute(), now.Hour(), now.Day(), now.Month())
+
+	cron := NewWithLocation(loc)
+	cron.AddFunc(spec, func() { wg.Done() })
+	cron.Start()
+	defer cron.Stop()
+
+	select {
+	case <-time.After(ONE_SECOND):
+		t.FailNow()
+	case <-wait(wg):
+	}
+}
+
 // Test that calling stop before start silently returns without
 // blocking the stop channel.
 func TestStopWithoutStart(t *testing.T) {

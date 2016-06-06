@@ -72,6 +72,11 @@ func (s byTime) Less(i, j int) bool {
 
 // New returns a new Cron job runner.
 func New() *Cron {
+	return NewWithLocation(time.Now().Location())
+}
+
+// NewWithLocation returns a new Cron job runner.
+func NewWithLocation(location *time.Location) *Cron {
 	return &Cron{
 		entries:  nil,
 		add:      make(chan *Entry),
@@ -79,7 +84,7 @@ func New() *Cron {
 		snapshot: make(chan []*Entry),
 		running:  false,
 		ErrorLog: nil,
-		location: time.Now().Location(),
+		location: location,
 	}
 }
 
@@ -127,9 +132,9 @@ func (c *Cron) Entries() []*Entry {
 	return c.entrySnapshot()
 }
 
-// SetLocation sets the time zone location
-func (c *Cron) SetLocation(location *time.Location) {
-	c.location = location
+// Location gets the time zone location
+func (c *Cron) Location() *time.Location {
+	return c.location
 }
 
 // Start the cron scheduler in its own go-routine.
