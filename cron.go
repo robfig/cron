@@ -127,7 +127,7 @@ func (c *Cron) Entries() []*Entry {
 	return c.entrySnapshot()
 }
 
-// SetLocations sets the time zone location
+// SetLocation sets the time zone location
 func (c *Cron) SetLocation(location *time.Location) {
 	c.location = location
 }
