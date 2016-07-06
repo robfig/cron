@@ -225,3 +225,10 @@ func (c *Cron) entrySnapshot() []*Entry {
 	}
 	return entries
 }
+
+func (c *Cron) IsRunning() (b bool){
+	if c.running {
+		return true
+	}
+	return false
+}
