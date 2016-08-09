@@ -19,6 +19,7 @@ type Cron struct {
 	snapshot chan []*Entry
 	running  bool
 	ErrorLog *log.Logger
+	location *time.Location
 }
 
 // Job is an interface for submitted cron jobs.
@@ -70,7 +71,7 @@ func (s byTime) Less(i, j int) bool {
 }
 
 // New returns a new Cron job runner.
-func New() *Cron {
+func New( offset int ) *Cron {
 	return &Cron{
 		entries:  nil,
 		add:      make(chan *Entry),
@@ -78,6 +79,7 @@ func New() *Cron {
 		snapshot: make(chan []*Entry),
 		running:  false,
 		ErrorLog: nil,
+		location: time.FixedZone("myzone",offset),
 	}
 }
 
@@ -147,7 +149,7 @@ func (c *Cron) runWithRecovery(j Job) {
 // access to the 'running' state variable.
 func (c *Cron) run() {
 	// Figure out the next activation times for each entry.
-	now := time.Now().Local()
+	now := time.Now().In(c.location)
 	for _, entry := range c.entries {
 		entry.Next = entry.Schedule.Next(now)
 	}
@@ -180,7 +182,7 @@ func (c *Cron) run() {
 
 		case newEntry := <-c.add:
 			c.entries = append(c.entries, newEntry)
-			newEntry.Next = newEntry.Schedule.Next(time.Now().Local())
+			newEntry.Next = newEntry.Schedule.Next(time.Now().In(c.location))
 
 		case <-c.snapshot:
 			c.snapshot <- c.entrySnapshot()
@@ -190,7 +192,7 @@ func (c *Cron) run() {
 		}
 
 		// 'now' should be updated after newEntry and snapshot cases.
-		now = time.Now().Local()
+		now = time.Now().In(c.location)
 	}
 }
 
