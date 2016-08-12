@@ -116,9 +116,9 @@ func TestAddWhileRunningWithDelay(t *testing.T) {
 	defer cron.Stop()
 	time.Sleep(5 * time.Second)
 	var calls = 0
-	cron.AddFunc("* * * * * *", func() { calls += 1 });
+	cron.AddFunc("* * * * * *", func() { calls += 1 })
 
-	<- time.After(ONE_SECOND)
+	<-time.After(ONE_SECOND)
 	if calls != 1 {
 		fmt.Printf("called %d times, expected 1\n", calls)
 		t.Fail()
@@ -226,6 +226,33 @@ func TestLocalTimezone(t *testing.T) {
 		now.Second()+1, now.Minute(), now.Hour(), now.Day(), now.Month())
 
 	cron := New()
+	cron.AddFunc(spec, func() { wg.Done() })
+	cron.Start()
+	defer cron.Stop()
+
+	select {
+	case <-time.After(ONE_SECOND):
+		t.FailNow()
+	case <-wait(wg):
+	}
+}
+
+// Test that the cron is run in the given time zone (as opposed to local).
+func TestNonLocalTimezone(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	loc, err := time.LoadLocation("Atlantic/Cape_Verde")
+	if err != nil {
+		fmt.Printf("Failed to load time zone Atlantic/Cape_Verde: %+v", err)
+		t.Fail()
+	}
+
+	now := time.Now().In(loc)
+	spec := fmt.Sprintf("%d %d %d %d %d ?",
+		now.Second()+1, now.Minute(), now.Hour(), now.Day(), now.Month())
+
+	cron := NewWithLocation(loc)
 	cron.AddFunc(spec, func() { wg.Done() })
 	cron.Start()
 	defer cron.Stop()
