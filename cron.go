@@ -196,7 +196,7 @@ func (c *Cron) run() {
 
 		case newEntry := <-c.add:
 			c.entries = append(c.entries, newEntry)
-			newEntry.Next = newEntry.Schedule.Next(time.Now().Local())
+			newEntry.Next = newEntry.Schedule.Next(time.Now().In(c.location))
 
 		case <-c.snapshot:
 			c.snapshot <- c.entrySnapshot()
