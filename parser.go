@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
 )
+
+var random = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 // Parse returns a new crontab schedule representing the given spec.
 // It returns a descriptive error if the spec is not valid.
@@ -66,6 +69,8 @@ func getField(field string, r bounds) uint64 {
 // getRange returns the bits indicated by the given expression:
 //   number | number "-" number [ "/" number ]
 func getRange(expr string, r bounds) uint64 {
+	rnd := random.Intn(int(r.max-r.min+1)) + int(r.min)
+	expr = strings.Replace(expr, "H", strconv.Itoa(rnd), -1)
 
 	var (
 		start, end, step uint
