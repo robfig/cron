@@ -9,13 +9,52 @@ import (
 	"time"
 )
 
-// Parse returns a new crontab schedule representing the given spec.
-// It returns a descriptive error if the spec is not valid.
-//
-// It accepts
-//   - Full crontab specs, e.g. "* * * * * ?"
-//   - Descriptors, e.g. "@midnight", "@every 1h30m"
-func Parse(spec string) (_ Schedule, err error) {
+type ParseOption int
+
+const (
+	Second ParseOption = 1 << iota
+	Minute
+	Hour
+	Dom
+	Month
+	Dow
+	DowOptinal
+	Descriptor
+)
+
+var places = []ParseOption{
+	Second,
+	Minute,
+	Hour,
+	Dom,
+	Month,
+	Dow,
+}
+
+var defaults = []string{
+	"0",
+	"0",
+	"0",
+	"*",
+	"*",
+	"*",
+}
+
+type Parser struct {
+	options   ParseOption
+	optionals int
+}
+
+func NewParser(options ParseOption) Parser {
+	optionals := 0
+	if options&DowOptinal > 0 {
+		options |= Dow
+		optionals++
+	}
+	return Parser{options, optionals}
+}
+
+func (p Parser) Parse(spec string) (_ Schedule, err error) {
 	// Convert panics into errors
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -23,21 +62,33 @@ func Parse(spec string) (_ Schedule, err error) {
 		}
 	}()
 
-	if spec[0] == '@' {
+	if spec[0] == '@' && p.options&Descriptor > 0 {
 		return parseDescriptor(spec), nil
 	}
 
-	// Split on whitespace.  We require 5 or 6 fields.
-	// (second) (minute) (hour) (day of month) (month) (day of week, optional)
+	// Figure out how many fields we need
+	max := 0
+	for _, place := range places {
+		if p.options&place > 0 {
+			max++
+		}
+	}
+	min := max - p.optionals
+
+	// Split fields on whitespace
 	fields := strings.Fields(spec)
-	if len(fields) != 5 && len(fields) != 6 {
-		log.Panicf("Expected 5 or 6 fields, found %d: %s", len(fields), spec)
+
+	// Validate number of fields
+	if count := len(fields); count < min || count > max {
+		if min == max {
+			log.Panicf("Expected %d fields, found %d: %s", min, count, spec)
+		} else {
+			log.Panicf("Expected %d to %d fields, found %d: %s", min, max, count, spec)
+		}
 	}
 
-	// If a sixth field is not provided (DayOfWeek), then it is equivalent to star.
-	if len(fields) == 5 {
-		fields = append(fields, "*")
-	}
+	// Fill in missing fields
+	fields = expandFields(fields, p.options)
 
 	schedule := &SpecSchedule{
 		Second: getField(fields[0], seconds),
@@ -49,6 +100,37 @@ func Parse(spec string) (_ Schedule, err error) {
 	}
 
 	return schedule, nil
+}
+
+func expandFields(fields []string, options ParseOption) []string {
+	n := 0
+	count := len(fields)
+	expFields := make([]string, len(places))
+	copy(expFields, defaults)
+	for i, place := range places {
+		if options&place > 0 {
+			expFields[i] = fields[n]
+			n++
+		}
+		if n == count {
+			break
+		}
+	}
+	return expFields
+}
+
+var defaultParser = NewParser(
+	Second | Minute | Hour | Dom | Month | DowOptinal | Descriptor,
+)
+
+// Parse returns a new crontab schedule representing the given spec.
+// It returns a descriptive error if the spec is not valid.
+//
+// It accepts
+//   - Full crontab specs, e.g. "* * * * * ?"
+//   - Descriptors, e.g. "@midnight", "@every 1h30m"
+func Parse(spec string) (_ Schedule, err error) {
+	return defaultParser.Parse(spec)
 }
 
 // getField returns an Int with the bits set representing all of the times that
@@ -74,11 +156,11 @@ func getRange(expr string, r bounds) uint64 {
 		singleDigit      = len(lowAndHigh) == 1
 	)
 
-	var extra_star uint64
+	var extra uint64
 	if lowAndHigh[0] == "*" || lowAndHigh[0] == "?" {
 		start = r.min
 		end = r.max
-		extra_star = starBit
+		extra = starBit
 	} else {
 		start = parseIntOrName(lowAndHigh[0], r.names)
 		switch len(lowAndHigh) {
@@ -115,7 +197,7 @@ func getRange(expr string, r bounds) uint64 {
 		log.Panicf("Beginning of range (%d) beyond end of range (%d): %s", start, end, expr)
 	}
 
-	return getBits(start, end, step) | extra_star
+	return getBits(start, end, step) | extra
 }
 
 // parseIntOrName returns the (possibly-named) integer contained in expr.
