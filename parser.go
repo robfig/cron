@@ -18,7 +18,7 @@ const (
 	Dom
 	Month
 	Dow
-	DowOptinal
+	DowOptional
 	Descriptor
 )
 
@@ -47,7 +47,7 @@ type Parser struct {
 
 func NewParser(options ParseOption) Parser {
 	optionals := 0
-	if options&DowOptinal > 0 {
+	if options&DowOptional > 0 {
 		options |= Dow
 		optionals++
 	}
@@ -120,7 +120,7 @@ func expandFields(fields []string, options ParseOption) []string {
 }
 
 var defaultParser = NewParser(
-	Second | Minute | Hour | Dom | Month | DowOptinal | Descriptor,
+	Second | Minute | Hour | Dom | Month | DowOptional | Descriptor,
 )
 
 // Parse returns a new crontab schedule representing the given spec.
