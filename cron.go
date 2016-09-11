@@ -201,7 +201,7 @@ func (c *Cron) run() {
 				break
 			}
 			c.entries = append(c.entries, newEntry)
-			newEntry.Next = newEntry.Schedule.Next(now)
+			newEntry.Next = newEntry.Schedule.Next(time.Now().Local())
 
 		case name := <-c.remove:
 			i := c.entries.pos(name)
