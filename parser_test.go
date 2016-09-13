@@ -115,3 +115,23 @@ func TestSpecSchedule(t *testing.T) {
 		}
 	}
 }
+
+func TestStandardSpecSchedule(t *testing.T) {
+	entries := []struct {
+		expr     string
+		expected Schedule
+	}{
+		{"5 * * * *", &SpecSchedule{1 << seconds.min, 1 << 5, all(hours), all(dom), all(months), all(dow)}},
+		{"@every 5m", ConstantDelaySchedule{time.Duration(5) * time.Minute}},
+	}
+
+	for _, c := range entries {
+		actual, err := ParseStandard(c.expr)
+		if err != nil {
+			t.Error(err)
+		}
+		if !reflect.DeepEqual(actual, c.expected) {
+			t.Errorf("%s => (expected) %b != %b (actual)", c.expr, c.expected, actual)
+		}
+	}
+}
