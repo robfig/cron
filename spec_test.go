@@ -202,3 +202,48 @@ func getTime(value string) time.Time {
 
 	return t
 }
+
+func TestNextWithTz(t *testing.T) {
+	runs := []struct {
+		time, spec string
+		expected   string
+	}{
+		// Failing tests
+		{"2016-01-03T13:09:03+0530", "0 14 14 * * *", "2016-01-03T14:14:00+0530"},
+		{"2016-01-03T04:09:03+0530", "0 14 14 * * ?", "2016-01-03T14:14:00+0530"},
+
+		// Passing tests
+		{"2016-01-03T14:09:03+0530", "0 14 14 * * *", "2016-01-03T14:14:00+0530"},
+		{"2016-01-03T14:00:00+0530", "0 14 14 * * ?", "2016-01-03T14:14:00+0530"},
+	}
+	for _, c := range runs {
+		sched, err := Parse(c.spec)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		actual := sched.Next(getTimeTZ(c.time))
+		expected := getTimeTZ(c.expected)
+		if !actual.Equal(expected) {
+			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.spec, expected, actual)
+		}
+	}
+}
+
+func getTimeTZ(value string) time.Time {
+	if value == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse("Mon Jan 2 15:04 2006", value)
+	if err != nil {
+		t, err = time.Parse("Mon Jan 2 15:04:05 2006", value)
+		if err != nil {
+			t, err = time.Parse("2006-01-02T15:04:05-0700", value)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
+
+	return t
+}
