@@ -9,6 +9,46 @@ import (
 	"time"
 )
 
+// ParseStandard returns a new crontab schedule representing the given standardSpec
+// (https://en.wikipedia.org/wiki/Cron). It differs from Parse requiring to always
+// pass 5 entries representing: minute, hour, day of month, month and day of week,
+// in that order. It returns a descriptive error if the spec is not valid.
+//
+// It accepts
+//   - Standard crontab specs, e.g. "* * * * ?"
+//   - Descriptors, e.g. "@midnight", "@every 1h30m"
+func ParseStandard(standardSpec string) (_ Schedule, err error) {
+	// Convert panics into errors
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("%v", recovered)
+		}
+	}()
+
+	if standardSpec[0] == '@' {
+		return parseDescriptor(standardSpec), nil
+	}
+
+	// Split on whitespace.  We require exactly 5 fields.
+	// (minute) (hour) (day of month) (month) (day of week)
+	fields := strings.Fields(standardSpec)
+	if len(fields) != 5 {
+		log.Panicf("Expected exactly 5, found %d: %s", len(fields), standardSpec)
+	}
+
+	schedule := &SpecSchedule{
+		Second: 1 << seconds.min,
+		Minute: getField(fields[0], minutes),
+		Hour:   getField(fields[1], hours),
+		Dom:    getField(fields[2], dom),
+		Month:  getField(fields[3], months),
+		Dow:    getField(fields[4], dow),
+	}
+
+	return schedule, nil
+
+}
+
 // Parse returns a new crontab schedule representing the given spec.
 // It returns a descriptive error if the spec is not valid.
 //
