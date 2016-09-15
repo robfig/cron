@@ -8,17 +8,21 @@ import (
 	"time"
 )
 
+// Configuration options for creating a parser. Most options specify which
+// fields should be included, while others enable features. If a field is not
+// included the parser will assume a default value. These options do not change
+// the order fields are parse in.
 type ParseOption int
 
 const (
-	Second ParseOption = 1 << iota
-	Minute
-	Hour
-	Dom
-	Month
-	Dow
-	DowOptional
-	Descriptor
+	Second      ParseOption = 1 << iota // Seconds field, default 0
+	Minute                              // Minutes field, default 0
+	Hour                                // Hours field, default 0
+	Dom                                 // Day of month field, default *
+	Month                               // Month field, default *
+	Dow                                 // Day of week field, default *
+	DowOptional                         // Optional day of week field, default *
+	Descriptor                          // Allow descriptors such as @monthly, @weekly, etc.
 )
 
 var places = []ParseOption{
@@ -39,11 +43,26 @@ var defaults = []string{
 	"*",
 }
 
+// A custom Parser that can be configured.
 type Parser struct {
 	options   ParseOption
 	optionals int
 }
 
+// Creates a custom Parser with custom options.
+//
+//  // Standard parser without descriptors
+//  specParser := NewParser(Minute | Hour | Dom | Month | Dow)
+//  sched, err := specParser.Parse("0 0 15 */3 *")
+//
+//  // Same as above, just excludes time fields
+//  subsParser := NewParser(Dom | Month | Dow)
+//  sched, err := specParser.Parse("15 */3 *")
+//
+//  // Same as above, just makes Dow optional
+//  subsParser := NewParser(Dom | Month | DowOptional)
+//  sched, err := specParser.Parse("15 */3")
+//
 func NewParser(options ParseOption) Parser {
 	optionals := 0
 	if options&DowOptional > 0 {
@@ -53,6 +72,9 @@ func NewParser(options ParseOption) Parser {
 	return Parser{options, optionals}
 }
 
+// Parse returns a new crontab schedule representing the given spec.
+// It returns a descriptive error if the spec is not valid.
+// It accepts crontab specs and features configured by NewParser.
 func (p Parser) Parse(spec string) (Schedule, error) {
 	if spec[0] == '@' && p.options&Descriptor > 0 {
 		return parseDescriptor(spec)
@@ -74,9 +96,8 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 	if count := len(fields); count < min || count > max {
 		if min == max {
 			return nil, fmt.Errorf("Expected exactly %d fields, found %d: %s", min, count, spec)
-		} else {
-			return nil, fmt.Errorf("Expected %d to %d fields, found %d: %s", min, max, count, spec)
 		}
+		return nil, fmt.Errorf("Expected %d to %d fields, found %d: %s", min, max, count, spec)
 	}
 
 	// Fill in missing fields
