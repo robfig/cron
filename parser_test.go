@@ -173,17 +173,17 @@ func TestParse(t *testing.T) {
 		},
 		{
 			expr: "* * * *",
-			err:  "Expected 5 or 6 fields",
+			err:  "Expected 5 to 6 fields",
 		},
 	}
 
 	for _, c := range entries {
 		actual, err := Parse(c.expr)
 		if len(c.err) != 0 && (err == nil || !strings.Contains(err.Error(), c.err)) {
-			t.Error("%s => expected %v, got %v", c.expr, c.err, err)
+			t.Errorf("%s => expected %v, got %v", c.expr, c.err, err)
 		}
 		if len(c.err) == 0 && err != nil {
-			t.Error("%s => unexpected error %v", c.expr, err)
+			t.Errorf("%s => unexpected error %v", c.expr, err)
 		}
 		if !reflect.DeepEqual(actual, c.expected) {
 			t.Errorf("%s => expected %b, got %b", c.expr, c.expected, actual)
@@ -218,10 +218,10 @@ func TestStandardSpecSchedule(t *testing.T) {
 	for _, c := range entries {
 		actual, err := ParseStandard(c.expr)
 		if len(c.err) != 0 && (err == nil || !strings.Contains(err.Error(), c.err)) {
-			t.Error("%s => expected %v, got %v", c.expr, c.err, err)
+			t.Errorf("%s => expected %v, got %v", c.expr, c.err, err)
 		}
 		if len(c.err) == 0 && err != nil {
-			t.Error("%s => unexpected error %v", c.expr, err)
+			t.Errorf("%s => unexpected error %v", c.expr, err)
 		}
 		if !reflect.DeepEqual(actual, c.expected) {
 			t.Errorf("%s => expected %b, got %b", c.expr, c.expected, actual)
