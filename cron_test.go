@@ -219,11 +219,11 @@ func TestRunningMultipleSchedules(t *testing.T) {
 // Test that the cron is run in the local time zone (as opposed to UTC).
 func TestLocalTimezone(t *testing.T) {
 	wg := &sync.WaitGroup{}
-	wg.Add(1)
+	wg.Add(2)
 
 	now := time.Now().Local()
-	spec := fmt.Sprintf("%d %d %d %d %d ?",
-		now.Second()+1, now.Minute(), now.Hour(), now.Day(), now.Month())
+	spec := fmt.Sprintf("%d,%d %d %d %d %d ?",
+		now.Second()+1, now.Second()+2, now.Minute(), now.Hour(), now.Day(), now.Month())
 
 	cron := New()
 	cron.AddFunc(spec, func() { wg.Done() })
@@ -231,7 +231,7 @@ func TestLocalTimezone(t *testing.T) {
 	defer cron.Stop()
 
 	select {
-	case <-time.After(ONE_SECOND):
+	case <-time.After(ONE_SECOND * 2):
 		t.FailNow()
 	case <-wait(wg):
 	}
@@ -240,7 +240,7 @@ func TestLocalTimezone(t *testing.T) {
 // Test that the cron is run in the given time zone (as opposed to local).
 func TestNonLocalTimezone(t *testing.T) {
 	wg := &sync.WaitGroup{}
-	wg.Add(1)
+	wg.Add(2)
 
 	loc, err := time.LoadLocation("Atlantic/Cape_Verde")
 	if err != nil {
@@ -249,8 +249,8 @@ func TestNonLocalTimezone(t *testing.T) {
 	}
 
 	now := time.Now().In(loc)
-	spec := fmt.Sprintf("%d %d %d %d %d ?",
-		now.Second()+1, now.Minute(), now.Hour(), now.Day(), now.Month())
+	spec := fmt.Sprintf("%d,%d %d %d %d %d ?",
+		now.Second()+1, now.Second()+2, now.Minute(), now.Hour(), now.Day(), now.Month())
 
 	cron := NewWithLocation(loc)
 	cron.AddFunc(spec, func() { wg.Done() })
@@ -258,7 +258,7 @@ func TestNonLocalTimezone(t *testing.T) {
 	defer cron.Stop()
 
 	select {
-	case <-time.After(ONE_SECOND):
+	case <-time.After(ONE_SECOND * 2):
 		t.FailNow()
 	case <-wait(wg):
 	}
