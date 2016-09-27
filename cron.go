@@ -183,6 +183,7 @@ func (c *Cron) run() {
 		timer := time.NewTimer(effective.Sub(now))
 		select {
 		case now = <-timer.C:
+			now = now.In(c.location)
 			// Run every entry whose next time was this effective time.
 			for _, e := range c.entries {
 				if e.Next != effective {
