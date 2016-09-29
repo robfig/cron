@@ -236,7 +236,8 @@ func (c *Cron) run() {
 		timer := time.NewTimer(effective.Sub(now))
 		select {
 		case now = <-timer.C:
-		// Run every entry whose next time was this effective time.
+			now = now.In(c.location)
+			// Run every entry whose next time was this effective time.
 			for _, e := range c.entries {
 				if e.Next != effective {
 					break
@@ -331,7 +332,6 @@ func NewFromString(data string) (*Cron, error) {
 		return nil, err
 	}
 	if len(container.Entries.([]interface{})) != 0 {
-		// [map[Schedule:map[Second:1.0376293541461623e+19 Minute:1.0376293541461623e+19 Hour:9.223372036871553e+18 Dom:9.223372041149743e+18 Month:9.223372036854784e+18 Dow:9.223372036854776e+18 Cat:SpecSchedule] Next:0001-01-01T00:00:00Z Prev:0001-01-01T00:00:00Z Job:map[Parameters:<nil> Cat:ArbitraryJob ScheduledJob:job1]]]
 		unparsedEntries := container.Entries.([]interface{})
 		for _, e := range unparsedEntries {
 			unparsedE := e.(map[string]interface{})
