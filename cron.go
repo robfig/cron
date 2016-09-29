@@ -7,24 +7,54 @@ import (
 	"runtime"
 	"sort"
 	"time"
+	"encoding/json"
+	"errors"
+	"strconv"
 )
 
 // Cron keeps track of any number of entries, invoking the associated func as
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
-	entries  []*Entry
-	stop     chan struct{}
-	add      chan *Entry
-	snapshot chan []*Entry
-	running  bool
-	ErrorLog *log.Logger
-	location *time.Location
+	entries   []*Entry
+	stop      chan struct{}
+	add       chan *Entry
+	snapshot  chan []*Entry
+	running   bool
+	ErrorLog  *log.Logger
+	location  *time.Location
+	functions map[string]ScheduledJob
+}
+
+// arbitrary functions type
+type ScheduledJob func(...interface{}) error
+
+type ArbitraryJob struct {
+	ScheduledJob string
+	Parameters   []interface{}
+	cron         *Cron
+}
+
+func (a ArbitraryJob)MarshalJSON() ([]byte, error) {
+	data := struct {
+		ScheduledJob string
+		Parameters   []interface{}
+		Cat          string
+	}{
+		ScheduledJob: a.ScheduledJob,
+		Parameters: a.Parameters,
+		Cat: "ArbitraryJob",
+	}
+	return json.Marshal(data)
 }
 
 // Job is an interface for submitted cron jobs.
 type Job interface {
 	Run()
+}
+
+func (a ArbitraryJob) Run() {
+	a.cron.functions[a.ScheduledJob](a.Parameters...)
 }
 
 // The Schedule describes a job's duty cycle.
@@ -41,22 +71,26 @@ type Entry struct {
 
 	// The next time the job will run. This is the zero time if Cron has not been
 	// started or this entry's schedule is unsatisfiable
-	Next time.Time
+	Next     time.Time
 
 	// The last time this job was run. This is the zero time if the job has never
 	// been run.
-	Prev time.Time
+	Prev     time.Time
 
 	// The Job to run.
-	Job Job
+	Job      Job
 }
 
 // byTime is a wrapper for sorting the entry array by time
 // (with zero time at the end).
 type byTime []*Entry
 
-func (s byTime) Len() int      { return len(s) }
-func (s byTime) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s byTime) Len() int {
+	return len(s)
+}
+func (s byTime) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
 func (s byTime) Less(i, j int) bool {
 	// Two zero times should return false.
 	// Otherwise, zero is "greater" than any other time.
@@ -78,20 +112,23 @@ func New() *Cron {
 // NewWithLocation returns a new Cron job runner.
 func NewWithLocation(location *time.Location) *Cron {
 	return &Cron{
-		entries:  nil,
+		entries:  []*Entry{},
 		add:      make(chan *Entry),
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
 		running:  false,
 		ErrorLog: nil,
 		location: location,
+		functions: map[string]ScheduledJob{},
 	}
 }
 
 // A wrapper that turns a func() into a cron.Job
 type FuncJob func()
 
-func (f FuncJob) Run() { f() }
+func (f FuncJob) Run() {
+	f()
+}
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
 func (c *Cron) AddFunc(spec string, cmd func()) error {
@@ -105,6 +142,22 @@ func (c *Cron) AddJob(spec string, cmd Job) error {
 		return err
 	}
 	c.Schedule(schedule, cmd)
+	return nil
+}
+
+// AddOneOff adds a Job to run only once.
+func (c *Cron) AddOneOffJob(when time.Time, cmd Job) error {
+
+	schedule := FixedSchedule{FixedTime: when}
+	c.Schedule(&schedule, cmd)
+	return nil
+}
+
+// AddOneOff adds a Job to run only once.
+func (c *Cron) AddOneOffFunc(when time.Time, cmd func()) error {
+
+	schedule := FixedSchedule{FixedTime: when}
+	c.Schedule(&schedule, FuncJob(cmd))
 	return nil
 }
 
@@ -183,7 +236,7 @@ func (c *Cron) run() {
 		timer := time.NewTimer(effective.Sub(now))
 		select {
 		case now = <-timer.C:
-			// Run every entry whose next time was this effective time.
+		// Run every entry whose next time was this effective time.
 			for _, e := range c.entries {
 				if e.Next != effective {
 					break
@@ -242,4 +295,116 @@ func (c *Cron) entrySnapshot() []*Entry {
 		})
 	}
 	return entries
+}
+
+func (c *Cron) PersistToString() (string, error) {
+	entries := []*Entry{}
+	for _, entry := range c.entrySnapshot() {
+		switch entry.Job.(type) {
+		case ArbitraryJob:  entries = append(entries, entry)
+		}
+	}
+
+	data := struct {
+		Entries  []*Entry
+		Running  bool
+		Location *time.Location
+	}{
+		Entries: entries,
+		Running: c.running,
+		Location: c.location,
+	}
+	marshalled, err := json.Marshal(data)
+
+	return string(marshalled), err
+}
+
+func NewFromString(data string) (*Cron, error) {
+	cron := New()
+	container := struct {
+		Entries  interface{}
+		Running  bool
+		Location *time.Location
+	}{}
+	err := json.Unmarshal([]byte(data), &container)
+	if err != nil {
+		return nil, err
+	}
+	if len(container.Entries.([]interface{})) != 0 {
+		// [map[Schedule:map[Second:1.0376293541461623e+19 Minute:1.0376293541461623e+19 Hour:9.223372036871553e+18 Dom:9.223372041149743e+18 Month:9.223372036854784e+18 Dow:9.223372036854776e+18 Cat:SpecSchedule] Next:0001-01-01T00:00:00Z Prev:0001-01-01T00:00:00Z Job:map[Parameters:<nil> Cat:ArbitraryJob ScheduledJob:job1]]]
+		unparsedEntries := container.Entries.([]interface{})
+		for _, e := range unparsedEntries {
+			unparsedE := e.(map[string]interface{})
+			entry := Entry{}
+			entry.Next, err = time.Parse(time.RFC3339, unparsedE["Next"].(string))
+			entry.Prev, err = time.Parse(time.RFC3339, unparsedE["Prev"].(string))
+			entry.Job, err = parseJob(cron, unparsedE["Job"])
+			entry.Schedule, err = parseSchedule(unparsedE["Schedule"])
+			cron.entries = append(cron.entries, &entry)
+		}
+	}
+	cron.running = container.Running
+	cron.location = container.Location
+
+	if cron.running {
+		// it would not run the cron if already set to running!
+		cron.running = false
+		cron.Start()
+	}
+	return cron, err
+}
+
+func parseJob(cron *Cron, unparsedJob interface{}) (Job, error) {
+	jobData := unparsedJob.(map[string]interface{})
+	if _, ok := jobData["Cat"]; !ok {
+		return nil, errors.New("Unknow or empty Job category")
+	}
+	switch jobData["Cat"] {
+	case "ArbitraryJob":
+		parameters := []interface{}{}
+		var ok bool
+		if _, ok = jobData["Parameters"]; ok {
+
+			parameters = jobData["Parameters"].([]interface{})
+		}
+		return ArbitraryJob{
+			cron: cron,
+			Parameters:  parameters,
+			ScheduledJob: jobData["ScheduledJob"].(string),
+		}, nil
+	default:
+		return nil, errors.New("Unknow or empty Job category: " + jobData["Cat"].(string))
+	}
+}
+
+func parseSchedule(unparsedSchedule interface{}) (Schedule, error) {
+	scheduleData := unparsedSchedule.(map[string]interface{})
+	if _, ok := scheduleData["Cat"]; !ok {
+		return nil, errors.New("Unknow or empty Job category")
+	}
+	switch scheduleData["Cat"] {
+	case "FixedSchedule":
+		fixedTime, _ := time.Parse(time.RFC3339, scheduleData["FixedTime"].(string))
+		return &FixedSchedule{
+			FixedTime: fixedTime,
+		}, nil
+	case "SpecSchedule":
+		dom, _ := strconv.ParseUint(scheduleData["Dom"].(string), 10, 64)
+		dow, _ := strconv.ParseUint(scheduleData["Dow"].(string), 10, 64)
+		second, _ := strconv.ParseUint(scheduleData["Second"].(string), 10, 64)
+		minute, _ := strconv.ParseUint(scheduleData["Minute"].(string), 10, 64)
+		hour, _ := strconv.ParseUint(scheduleData["Hour"].(string), 10, 64)
+		month, _ := strconv.ParseUint(scheduleData["Month"].(string), 10, 64)
+		return &SpecSchedule{
+			Dom: dom,
+			Dow: dow,
+			Hour: hour,
+			Minute: minute,
+			Month: month,
+			Second: second,
+		}, nil
+	default:
+		return nil, errors.New("Unknow or empty Schedule category: " + scheduleData["Cat"].(string))
+	}
+	return nil, nil
 }
