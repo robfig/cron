@@ -34,10 +34,10 @@ func TestCron_Persist(t *testing.T) {
 	cron := New()
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	cron.functions["job1"] = ScheduledJob(func(params...interface{}) error {
+	cron.RegisterFunction("job1", ScheduledJob(func(params...interface{}) error {
 		wg.Done()
 		return nil
-	})
+	}))
 	cron.AddJob("* * * * * ?", ArbitraryJob{Parameters: []interface{}{}, ScheduledJob: "job1", cron: cron})
 	cron.Start()
 	defer cron.Stop()

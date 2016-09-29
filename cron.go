@@ -408,3 +408,12 @@ func parseSchedule(unparsedSchedule interface{}) (Schedule, error) {
 	}
 	return nil, nil
 }
+
+func (c *Cron) RegisterFunction(name string, job ScheduledJob) ScheduledJob {
+	var scheduledJob ScheduledJob
+	if _, ok := c.functions[name]; ok {
+		scheduledJob = c.functions[name]
+	}
+	c.functions[name] = job
+	return scheduledJob
+}
