@@ -130,6 +130,15 @@ func (f FuncJob) Run() {
 	f()
 }
 
+// creates and initialize arbitrary job
+func (c *Cron) NewArbitraryJob(functionToRun string, parameters ...interface{}) *ArbitraryJob {
+	return &ArbitraryJob{
+		cron: c,
+		ScheduledJob: functionToRun,
+		Parameters: parameters,
+	}
+}
+
 // AddFunc adds a func to the Cron to be run on the given schedule.
 func (c *Cron) AddFunc(spec string, cmd func()) error {
 	return c.AddJob(spec, FuncJob(cmd))
