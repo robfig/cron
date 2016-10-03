@@ -109,6 +109,14 @@ func New() *Cron {
 	return NewWithLocation(time.Now().Location())
 }
 
+func NewWithFunctions(jobs map[string]ScheduledJob) *Cron {
+	cron := NewWithLocation(time.Now().Location())
+	for functionName, function := range jobs {
+		cron.RegisterFunction(functionName, function)
+	}
+	return cron
+}
+
 // NewWithLocation returns a new Cron job runner.
 func NewWithLocation(location *time.Location) *Cron {
 	return &Cron{
