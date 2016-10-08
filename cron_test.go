@@ -7,6 +7,7 @@ import (
 	"time"
 	"github.com/stretchr/testify/assert"
 	"strings"
+	"bytes"
 )
 
 // Many tests schedule a job for every second, and then wait at most a second
@@ -14,16 +15,16 @@ import (
 // compensate for a few milliseconds of runtime.
 const ONE_SECOND = 1*time.Second + 10*time.Millisecond
 
-func TestArbitraryJob_Run(t *testing.T) {
+func TestPresetJob_Run(t *testing.T) {
 	result := 0
 	cron := New()
 	cron.functions["job1"] = ScheduledJob(func(params...interface{}) error {
 		result = params[0].(int) + params[1].(int)
 		return nil
 	})
-	arbitraryJob := ArbitraryJob{
+	arbitraryJob := PresetJob{
 		cron:cron,
-		ScheduledJob: "job1",
+		JobName: "job1",
 		Parameters: []interface{}{1, 1},
 	}
 	arbitraryJob.Run()
@@ -34,17 +35,19 @@ func TestCron_Persist(t *testing.T) {
 	cron := New()
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	cron.RegisterFunction("job1", ScheduledJob(func(params...interface{}) error {
+	cron.RegisterPresetJob("job1", ScheduledJob(func(params...interface{}) error {
 		wg.Done()
 		return nil
 	}))
-	cron.AddJob("* * * * * ?", ArbitraryJob{Parameters: []interface{}{}, ScheduledJob: "job1", cron: cron})
+	cron.AddJob("* * * * * ?", PresetJob{Parameters: []interface{}{}, JobName: "job1", cron: cron})
 	cron.Start()
 	defer cron.Stop()
-	data, err := cron.PersistToString()
+	buffer := bytes.NewBuffer([]byte{})
+	err := cron.PersistToWriter(buffer)
 	if err != nil {
 		t.FailNow()
 	}
+	data := string(buffer.Bytes())
 	if data == "" || !strings.Contains(data, "{\"Entries\"") {
 		t.FailNow()
 	}
@@ -64,9 +67,9 @@ func TestParseJob(t *testing.T) {
 		"Cat": "ArbitraryJob",
 	})
 	assert.NoError(t, err)
-	assert.IsType(t, ArbitraryJob{}, job)
-	assert.Equal(t, job.(ArbitraryJob).ScheduledJob, "job1")
-	assert.Equal(t, len(job.(ArbitraryJob).Parameters), 2)
+	assert.IsType(t, PresetJob{}, job)
+	assert.Equal(t, job.(PresetJob).JobName, "job1")
+	assert.Equal(t, len(job.(PresetJob).Parameters), 2)
 }
 
 func TestParseSchedule(t *testing.T) {
@@ -100,8 +103,9 @@ func TestParseSchedule2(t *testing.T) {
 }
 
 func TestRestore(t *testing.T) {
-	j := `{"Entries":[{"Schedule":{"Second":"10376293541461622783","Minute":"10376293541461622783","Hour":"9223372036871553023","Dom":"9223372041149743102","Month":"9223372036854783998","Dow":"9223372036854775935","Cat":"SpecSchedule"},"Next":"0001-01-01T00:00:00Z","Prev":"0001-01-01T00:00:00Z","Job":{"ScheduledJob":"job1","Parameters":[],"Cat":"ArbitraryJob"}}],"Running":true,"Location":{}}`
-	cron, err := NewFromString(j)
+	j := `{"Entries":[{"Schedule":{"Second":"10376293541461622783","Minute":"10376293541461622783","Hour":"9223372036871553023","Dom":"9223372041149743102","Month":"9223372036854783998","Dow":"9223372036854775935","Cat":"SpecSchedule"},"Next":"0001-01-01T00:00:00Z","Prev":"0001-01-01T00:00:00Z","Job":{"ScheduledJob":"job1","Parameters":[],"Cat":"ArbitraryJob"}}],"Running":false,"Location":{}}`
+	buffer := bytes.NewBufferString(j)
+	cron, err := NewFromReader(buffer)
 	assert.NoError(t, err)
 	assert.NotNil(t, cron)
 	assert.Equal(t, 1, len(cron.entries))

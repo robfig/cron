@@ -10,6 +10,8 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"io"
+	"io/ioutil"
 )
 
 // Cron keeps track of any number of entries, invoking the associated func as
@@ -29,19 +31,19 @@ type Cron struct {
 // arbitrary functions type
 type ScheduledJob func(...interface{}) error
 
-type ArbitraryJob struct {
-	ScheduledJob string
-	Parameters   []interface{}
-	cron         *Cron
+type PresetJob struct {
+	JobName    string
+	Parameters []interface{}
+	cron       *Cron
 }
 
-func (a ArbitraryJob)MarshalJSON() ([]byte, error) {
+func (a PresetJob)MarshalJSON() ([]byte, error) {
 	data := struct {
 		ScheduledJob string
 		Parameters   []interface{}
 		Cat          string
 	}{
-		ScheduledJob: a.ScheduledJob,
+		ScheduledJob: a.JobName,
 		Parameters: a.Parameters,
 		Cat: "ArbitraryJob",
 	}
@@ -53,8 +55,11 @@ type Job interface {
 	Run()
 }
 
-func (a ArbitraryJob) Run() {
-	a.cron.functions[a.ScheduledJob](a.Parameters...)
+func (a PresetJob) Run() {
+	if a.cron == nil || a.cron.functions[a.JobName] == nil {
+		return
+	}
+	a.cron.functions[a.JobName](a.Parameters...)
 }
 
 // The Schedule describes a job's duty cycle.
@@ -109,10 +114,11 @@ func New() *Cron {
 	return NewWithLocation(time.Now().Location())
 }
 
-func NewWithFunctions(jobs map[string]ScheduledJob) *Cron {
+// Returns a new Cron initialized with prest jobs set to Local time zone
+func NewWithPresetFunctions(jobs map[string]ScheduledJob) *Cron {
 	cron := NewWithLocation(time.Now().Location())
 	for functionName, function := range jobs {
-		cron.RegisterFunction(functionName, function)
+		cron.RegisterPresetJob(functionName, function)
 	}
 	return cron
 }
@@ -138,11 +144,12 @@ func (f FuncJob) Run() {
 	f()
 }
 
-// creates and initialize arbitrary job
-func (c *Cron) NewArbitraryJob(functionToRun string, parameters ...interface{}) *ArbitraryJob {
-	return &ArbitraryJob{
+// Creates and initializes instance of preset job. Preset job can be stored/restored.
+// Preset jobs however requires the underlying function(presetJobName) to be registered with the Cron instance.
+func (c *Cron) NewPresetJob(presetJobName string, parameters ...interface{}) *PresetJob {
+	return &PresetJob{
 		cron: c,
-		ScheduledJob: functionToRun,
+		JobName: presetJobName,
 		Parameters: parameters,
 	}
 }
@@ -254,7 +261,7 @@ func (c *Cron) run() {
 		select {
 		case now = <-timer.C:
 			now = now.In(c.location)
-			// Run every entry whose next time was this effective time.
+		// Run every entry whose next time was this effective time.
 			for _, e := range c.entries {
 				if e.Next != effective {
 					break
@@ -315,11 +322,14 @@ func (c *Cron) entrySnapshot() []*Entry {
 	return entries
 }
 
-func (c *Cron) PersistToString() (string, error) {
+// Stores all *preset* schedules to a JSON file. All other jobs (simple functions)
+// can't  be stored. Parameters are stored as well using the standard JSON marshaller.
+// All standard marshaller rules apply (private fields etc.)
+func (c *Cron) PersistToWriter(writer io.Writer) (error) {
 	entries := []*Entry{}
 	for _, entry := range c.entrySnapshot() {
 		switch entry.Job.(type) {
-		case ArbitraryJob:  entries = append(entries, entry)
+		case PresetJob:  entries = append(entries, entry)
 		}
 	}
 
@@ -334,17 +344,28 @@ func (c *Cron) PersistToString() (string, error) {
 	}
 	marshalled, err := json.Marshal(data)
 
-	return string(marshalled), err
+	if err != nil {
+		return err
+	}
+
+	_, err = writer.Write(marshalled)
+	return err
 }
 
-func NewFromString(data string) (*Cron, error) {
+// Creates a new Cron from a JSON. Can start the cron if the flag `running` says so.
+// All preset jobs referred in the JSON need to be registered with the cron in order to be runable.
+func NewFromReader(reader io.Reader) (*Cron, error) {
 	cron := New()
 	container := struct {
 		Entries  interface{}
 		Running  bool
 		Location *time.Location
 	}{}
-	err := json.Unmarshal([]byte(data), &container)
+	data, err := ioutil.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal([]byte(data), &container)
 	if err != nil {
 		return nil, err
 	}
@@ -384,10 +405,10 @@ func parseJob(cron *Cron, unparsedJob interface{}) (Job, error) {
 
 			parameters = jobData["Parameters"].([]interface{})
 		}
-		return ArbitraryJob{
+		return PresetJob{
 			cron: cron,
 			Parameters:  parameters,
-			ScheduledJob: jobData["ScheduledJob"].(string),
+			JobName: jobData["ScheduledJob"].(string),
 		}, nil
 	default:
 		return nil, errors.New("Unknow or empty Job category: " + jobData["Cat"].(string))
@@ -426,7 +447,9 @@ func parseSchedule(unparsedSchedule interface{}) (Schedule, error) {
 	return nil, nil
 }
 
-func (c *Cron) RegisterFunction(name string, job ScheduledJob) ScheduledJob {
+// Associates a job with a name this Cron. Once associated the scheduled job can be
+// persisted.
+func (c *Cron) RegisterPresetJob(name string, job ScheduledJob) ScheduledJob {
 	var scheduledJob ScheduledJob
 	if _, ok := c.functions[name]; ok {
 		scheduledJob = c.functions[name]

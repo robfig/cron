@@ -22,6 +22,44 @@ them in their own goroutines.
 	..
 	c.Stop()  // Stop the scheduler (does not stop any jobs already running).
 
+One off jobs. Functions are called at a scheduled time. To schedule a job to be
+run at specified time call cron.
+
+	c := cron.New()
+   c.AddOneOffFunc(time.Now().Add(2 * time.Second), func() { fmt.Println("Will run in 2 seconds") }
+   c.Start()
+
+If you want to persist the state of a cron into a writer you can do so by calling
+
+   cron.PersistToWriter(writer)
+
+However for any state persisting to make sense you have to use a different type of functions.
+They're called PresetJob. It's not so difficult to take advantage of PresetJobs. First you have
+to register a function with a cron.
+
+   cron := New()
+   cron.RegisterPresetJob("preset1", ScheduledJob(func(params...interface{}) error {
+     name := params[0].(string)
+     fmt.Println("I'm a present job: " + name)
+     return nil
+   }))
+   cron.AddOneOffJob(time.Now().Add(2 * time.Second), cron.NewArbitraryJob("preset1", "preset1"))
+   cron.Start()
+   cron.PersistToWriter(writer)
+
+If you want to restore the state of a cron use the
+
+   cron, err := NewFromReader(reader)
+   cron.RegisterPresetJob("preset1", ScheduledJob(func(params...interface{}) error {
+     name := params[0].(string)
+     fmt.Println("I'm a present job: " + name)
+     return nil
+   }))
+   cron.Start()
+
+Please note that for any restored cron to make sense you have register the same functions
+under the same names.
+
 CRON Expression Format
 
 A cron expression represents a set of times, using 6 space-separated fields.
