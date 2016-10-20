@@ -365,6 +365,10 @@ func NewFromReader(reader io.Reader) (*Cron, error) {
 	if err != nil {
 		return nil, err
 	}
+	// no input means nothing to restore
+	if len(data) == 0 {
+		return cron, nil
+	}
 	err = json.Unmarshal([]byte(data), &container)
 	if err != nil {
 		return nil, err
