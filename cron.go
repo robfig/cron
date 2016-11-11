@@ -84,6 +84,9 @@ type Entry struct {
 
 	// The Job to run.
 	Job      Job
+
+    // Allows us the lookup or categorize entries.
+	Index    string
 }
 
 // byTime is a wrapper for sorting the entry array by time
@@ -178,10 +181,26 @@ func (c *Cron) AddOneOffJob(when time.Time, cmd Job) error {
 }
 
 // AddOneOff adds a Job to run only once.
+func (c *Cron) AddOneOffJobWithIndex(when time.Time, cmd Job, index string) error {
+
+	schedule := FixedSchedule{FixedTime: when}
+	c.ScheduleWithIndex(&schedule, cmd, index)
+	return nil
+}
+
+// AddOneOff adds a Job to run only once.
 func (c *Cron) AddOneOffFunc(when time.Time, cmd func()) error {
 
 	schedule := FixedSchedule{FixedTime: when}
 	c.Schedule(&schedule, FuncJob(cmd))
+	return nil
+}
+
+// AddOneOff adds a Job to run only once.
+func (c *Cron) AddOneOffFuncWithIndex(when time.Time, cmd func(), index string) error {
+
+	schedule := FixedSchedule{FixedTime: when}
+	c.ScheduleWithIndex(&schedule, FuncJob(cmd), index)
 	return nil
 }
 
@@ -190,6 +209,22 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) {
 	entry := &Entry{
 		Schedule: schedule,
 		Job:      cmd,
+	}
+	if !c.running {
+		c.entries = append(c.entries, entry)
+		return
+	}
+
+	c.add <- entry
+}
+
+// ScheduleWithIndex adds a Job to the Cron to be run on the given schedule. 
+// It allows to key the scheduled job by index.
+func (c *Cron) ScheduleWithIndex(schedule Schedule, cmd Job, index string) {
+	entry := &Entry{
+		Schedule: schedule,
+		Job:      cmd,
+		Index:    index,
 	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
@@ -317,6 +352,7 @@ func (c *Cron) entrySnapshot() []*Entry {
 			Next:     e.Next,
 			Prev:     e.Prev,
 			Job:      e.Job,
+			Index:    e.Index,
 		})
 	}
 	return entries
@@ -460,4 +496,19 @@ func (c *Cron) RegisterPresetJob(name string, job ScheduledJob) ScheduledJob {
 	}
 	c.functions[name] = job
 	return scheduledJob
+}
+
+// RemoveIndex "unschedules" jobs related to given index.
+func (c *Cron) RemoveIndex(index string) {
+	c.Stop()
+	entriesToRemove := []int{}
+	for i, e := range c.entries {
+		if e.Index == index {
+			entriesToRemove = append(entriesToRemove, i)
+		}
+	}
+	for _, i := range entriesToRemove {
+		c.entries = append(c.entries[:i], c.entries[i+1:]...)
+	}	
+	c.Start()
 }

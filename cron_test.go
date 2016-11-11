@@ -136,6 +136,44 @@ func TestFixedSchedule(t *testing.T) {
 	}
 }
 
+// Adds a job and removes it - it should never be called.
+func TestCron_RemoveIndex(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	cron.AddOneOffFuncWithIndex(time.Now().Add(time.Second), func() { wg.Done() }, "test1")
+	cron.Start()
+	defer cron.Stop()
+	cron.RemoveIndex("test1")
+
+	// wait 1.01 secs, if we got called in 1.00 sec we failed as the job has been removed.
+	select {
+	case <-time.After(ONE_SECOND):
+	case <-wait(wg):
+		t.FailNow()
+	}
+}
+
+// Adds a job and removes it - it should never be called.
+func TestCron_RemoveIndex2(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	cron.AddOneOffFuncWithIndex(time.Now().Add(time.Second), func() { wg.Done() }, "test2")
+	cron.Start()
+	defer cron.Stop()
+	cron.RemoveIndex("test1")
+
+	// wait 2 secs, the job should run in 1 sec.
+	select {
+	case <-time.After(2 * time.Second):
+		t.FailNow()
+	case <-wait(wg):
+	}
+}
+
 func TestFuncPanicRecovery(t *testing.T) {
 	cron := New()
 	cron.Start()
