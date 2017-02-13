@@ -180,7 +180,7 @@ func (c *Cron) run() {
 			effective = c.entries[0].Next
 		}
 
-		timer := time.NewTimer(effective.Sub(now))
+		timer := time.NewTimer(effective.Sub(now).Round(time.Second))
 		select {
 		case now = <-timer.C:
 			now = now.In(c.location)
