@@ -180,10 +180,10 @@ func (c *Cron) run() {
 			effective = c.entries[0].Next
 		}
 
-		timer := time.NewTimer(effective.Sub(now).Round(time.Second))
+		timer := time.NewTimer(effective.Sub(now))
 		select {
 		case now = <-timer.C:
-			now = now.In(c.location)
+			now = now.In(c.location).Round(time.Second)
 			// Run every entry whose next time was this effective time.
 			for _, e := range c.entries {
 				if e.Next != effective {
