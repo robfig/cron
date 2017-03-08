@@ -11,7 +11,6 @@ import (
 // be inspected while running.
 type Cron struct {
 	entries  []*Entry
-	stop     chan struct{}
 	add      chan *Entry
 	mu       sync.RWMutex
 	remove   chan EntryID

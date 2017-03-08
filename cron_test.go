@@ -13,39 +13,18 @@ import (
 // compensate for a few milliseconds of runtime.
 const ONE_SECOND = 1*time.Second + 10*time.Millisecond
 
-// Start and stop cron with no entries.
-func TestNoEntries(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	cron := New()
-	go cron.Run(ctx)
-
-	select {
-	case <-time.After(ONE_SECOND):
-		t.FailNow()
-	case <-stop(cron):
-	}
-}
-
 // Start, stop, then add an entry. Verify entry doesn't run.
 func TestStopCausesJobsToNotRun(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	wg := &sync.WaitGroup{}
+	var wg sync.WaitGroup
 	wg.Add(1)
 
 	cron := New()
-	go cron.Run(ctx)
-
-	cron.Stop()
 	cron.AddFunc("* * * * * ?", func(_ context.Context) { wg.Done() })
 
 	select {
 	case <-time.After(ONE_SECOND):
 		// No job ran!
-	case <-wait(wg):
+	case <-wait(&wg):
 		t.FailNow()
 	}
 }
@@ -55,20 +34,18 @@ func TestAddBeforeRunning(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	wg := &sync.WaitGroup{}
+	var wg sync.WaitGroup
 	wg.Add(1)
 
 	cron := New()
 	cron.AddFunc("* * * * * ?", func(_ context.Context) { wg.Done() })
 	go cron.Run(ctx)
 
-	defer cron.Stop()
-
 	// Give cron 2 seconds to run our job (which is always activated).
 	select {
 	case <-time.After(ONE_SECOND):
 		t.FailNow()
-	case <-wait(wg):
+	case <-wait(&wg):
 	}
 }
 
@@ -77,18 +54,18 @@ func TestAddWhileRunning(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	wg := &sync.WaitGroup{}
+	var wg sync.WaitGroup
 	wg.Add(1)
 
 	cron := New()
 	go cron.Run(ctx)
-	defer cron.Stop()
+
 	cron.AddFunc("* * * * * ?", func(_ context.Context) { wg.Done() })
 
 	select {
 	case <-time.After(ONE_SECOND):
 		t.FailNow()
-	case <-wait(wg):
+	case <-wait(&wg):
 	}
 }
 
@@ -97,19 +74,18 @@ func TestRemoveBeforeRunning(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	wg := &sync.WaitGroup{}
+	var wg sync.WaitGroup
 	wg.Add(1)
 
 	cron := New()
 	id, _ := cron.AddFunc("* * * * * ?", func(_ context.Context) { wg.Done() })
 	cron.Remove(id)
 	go cron.Run(ctx)
-	defer cron.Stop()
 
 	select {
 	case <-time.After(ONE_SECOND):
 		// Success, shouldn't run
-	case <-wait(wg):
+	case <-wait(&wg):
 		t.FailNow()
 	}
 }
@@ -119,18 +95,17 @@ func TestRemoveWhileRunning(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	wg := &sync.WaitGroup{}
+	var wg sync.WaitGroup
 	wg.Add(1)
 
 	cron := New()
 	go cron.Run(ctx)
-	defer cron.Stop()
 	id, _ := cron.AddFunc("* * * * * ?", func(_ context.Context) { wg.Done() })
 	cron.Remove(id)
 
 	select {
 	case <-time.After(ONE_SECOND):
-	case <-wait(wg):
+	case <-wait(&wg):
 		t.FailNow()
 	}
 }
@@ -140,13 +115,12 @@ func TestSnapshotEntries(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	wg := &sync.WaitGroup{}
+	var wg sync.WaitGroup
 	wg.Add(1)
 
 	cron := New()
 	cron.AddFunc("@every 2s", func(_ context.Context) { wg.Done() })
 	go cron.Run(ctx)
-	defer cron.Stop()
 
 	// Cron should fire in 2 seconds. After 1 second, call Entries.
 	select {
@@ -158,7 +132,7 @@ func TestSnapshotEntries(t *testing.T) {
 	select {
 	case <-time.After(ONE_SECOND):
 		t.FailNow()
-	case <-wait(wg):
+	case <-wait(&wg):
 	}
 
 }
@@ -171,7 +145,7 @@ func TestMultipleEntries(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	wg := &sync.WaitGroup{}
+	var wg sync.WaitGroup
 	wg.Add(2)
 
 	cron := New()
@@ -185,12 +159,11 @@ func TestMultipleEntries(t *testing.T) {
 	cron.Remove(id1)
 	go cron.Run(ctx)
 	cron.Remove(id2)
-	defer cron.Stop()
 
 	select {
 	case <-time.After(ONE_SECOND):
 		t.FailNow()
-	case <-wait(wg):
+	case <-wait(&wg):
 	}
 }
 
@@ -199,7 +172,7 @@ func TestRunningJobTwice(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	wg := &sync.WaitGroup{}
+	var wg sync.WaitGroup
 	wg.Add(2)
 
 	cron := New()
@@ -208,12 +181,11 @@ func TestRunningJobTwice(t *testing.T) {
 	cron.AddFunc("* * * * * ?", func(_ context.Context) { wg.Done() })
 
 	go cron.Run(ctx)
-	defer cron.Stop()
 
 	select {
 	case <-time.After(2 * ONE_SECOND):
 		t.FailNow()
-	case <-wait(wg):
+	case <-wait(&wg):
 	}
 }
 
@@ -221,7 +193,7 @@ func TestRunningMultipleSchedules(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	wg := &sync.WaitGroup{}
+	var wg sync.WaitGroup
 	wg.Add(2)
 
 	cron := New()
@@ -233,12 +205,11 @@ func TestRunningMultipleSchedules(t *testing.T) {
 	cron.Schedule(Every(time.Hour), FuncJob(func(_ context.Context) {}))
 
 	go cron.Run(ctx)
-	defer cron.Stop()
 
 	select {
 	case <-time.After(2 * ONE_SECOND):
 		t.FailNow()
-	case <-wait(wg):
+	case <-wait(&wg):
 	}
 }
 
@@ -247,7 +218,7 @@ func TestLocalTimezone(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	wg := &sync.WaitGroup{}
+	var wg sync.WaitGroup
 	wg.Add(1)
 
 	now := time.Now().Local()
@@ -257,12 +228,11 @@ func TestLocalTimezone(t *testing.T) {
 	cron := New()
 	cron.AddFunc(spec, func(_ context.Context) { wg.Done() })
 	go cron.Run(ctx)
-	defer cron.Stop()
 
 	select {
 	case <-time.After(ONE_SECOND):
 		t.FailNow()
-	case <-wait(wg):
+	case <-wait(&wg):
 	}
 }
 
@@ -280,24 +250,23 @@ func TestJob(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	wg := &sync.WaitGroup{}
+	var wg sync.WaitGroup
 	wg.Add(1)
 
 	cron := New()
-	cron.AddJob("0 0 0 30 Feb ?", testJob{wg, "job0"})
-	cron.AddJob("0 0 0 1 1 ?", testJob{wg, "job1"})
-	cron.AddJob("* * * * * ?", testJob{wg, "job2"})
-	cron.AddJob("1 0 0 1 1 ?", testJob{wg, "job3"})
-	cron.Schedule(Every(5*time.Second+5*time.Nanosecond), testJob{wg, "job4"})
-	cron.Schedule(Every(5*time.Minute), testJob{wg, "job5"})
+	cron.AddJob("0 0 0 30 Feb ?", testJob{&wg, "job0"})
+	cron.AddJob("0 0 0 1 1 ?", testJob{&wg, "job1"})
+	cron.AddJob("* * * * * ?", testJob{&wg, "job2"})
+	cron.AddJob("1 0 0 1 1 ?", testJob{&wg, "job3"})
+	cron.Schedule(Every(5*time.Second+5*time.Nanosecond), testJob{&wg, "job4"})
+	cron.Schedule(Every(5*time.Minute), testJob{&wg, "job5"})
 
 	go cron.Run(ctx)
-	defer cron.Stop()
 
 	select {
 	case <-time.After(ONE_SECOND):
 		t.FailNow()
-	case <-wait(wg):
+	case <-wait(&wg):
 	}
 
 	// Ensure the entries are in the right order.
@@ -320,15 +289,6 @@ func wait(wg *sync.WaitGroup) chan bool {
 	ch := make(chan bool)
 	go func() {
 		wg.Wait()
-		ch <- true
-	}()
-	return ch
-}
-
-func stop(cron *Cron) chan bool {
-	ch := make(chan bool)
-	go func() {
-		cron.Stop()
 		ch <- true
 	}()
 	return ch

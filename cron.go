@@ -29,7 +29,6 @@ func New() *Cron {
 	return &Cron{
 		entries:  nil,
 		add:      make(chan *Entry),
-		stop:     make(chan struct{}),
 		snapshot: make(chan []Entry),
 		remove:   make(chan EntryID),
 		running:  false,
@@ -135,6 +134,8 @@ func (c *Cron) Run(ctx context.Context) {
 		}
 
 		select {
+		case <-ctx.Done():
+			return
 		case now = <-time.After(effective.Sub(now)):
 			// Run every entry whose next time was this effective time.
 			for _, e := range c.entries {
@@ -156,18 +157,10 @@ func (c *Cron) Run(ctx context.Context) {
 
 		case id := <-c.remove:
 			c.removeEntry(id)
-
-		case <-c.stop:
-			return
 		}
 
 		now = time.Now().Local()
 	}
-}
-
-// Stop the cron scheduler.
-func (c *Cron) Stop() {
-	c.stop <- struct{}{}
 }
 
 // entrySnapshot returns a copy of the current cron entry list.
