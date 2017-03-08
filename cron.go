@@ -106,6 +106,7 @@ func (l *entryList) Run() {
 			e.Next = e.Schedule.Next(time.Now())
 			l.changedCondMu.Lock()
 			l.changed = true
+			l.changedCond.Broadcast()
 			l.changedCondMu.Unlock()
 		case id := <-l.remove:
 			for i, e := range l.entries {
@@ -116,6 +117,7 @@ func (l *entryList) Run() {
 			}
 			l.changedCondMu.Lock()
 			l.changed = true
+			l.changedCond.Broadcast()
 			l.changedCondMu.Unlock()
 		case ch := <-l.snapshot:
 			snapshot := make([]*Entry, len(l.entries))
