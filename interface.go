@@ -11,13 +11,12 @@ import (
 // be inspected while running.
 type Cron struct {
 	ctx      context.Context
-	entries  []*Entry
+	entries  *entryList
 	idgen    chan EntryID
 	add      chan *Entry
 	mu       sync.RWMutex
 	remove   chan EntryID
 	snapshot chan []Entry
-	running  bool
 }
 
 // Job is an interface for submitted cron jobs.

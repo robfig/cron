@@ -4,6 +4,7 @@ package cron // import "github.com/lestrrat/cron"
 import (
 	"context"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -24,11 +25,119 @@ func (s byTime) Less(i, j int) bool {
 	return s[i].Next.Before(s[j].Next)
 }
 
+type entryList struct {
+	add           chan *Entry
+	ctx           context.Context
+	changed       bool
+	changedCond   *sync.Cond
+	changedCondMu *sync.Mutex
+	entries       []*Entry
+	remove        chan EntryID
+	snapshot      chan chan []*Entry
+}
+
+func newEntryList(ctx context.Context) *entryList {
+	mu := &sync.Mutex{}
+	l := &entryList{
+		add:           make(chan *Entry),
+		changedCond:   sync.NewCond(mu),
+		changedCondMu: mu,
+		ctx:           ctx,
+		remove:        make(chan EntryID),
+		snapshot:      make(chan (chan []*Entry)),
+	}
+	go l.Run()
+	return l
+}
+
+func (l *entryList) Changed() bool {
+	l.changedCondMu.Lock()
+	for !l.changed {
+		l.changedCond.Wait()
+	}
+	l.changed = false
+	l.changedCondMu.Unlock()
+	return true
+}
+
+func (l *entryList) Add(e *Entry) {
+	select {
+	case <-l.ctx.Done():
+		return
+	case l.add <- e:
+	}
+}
+
+func (l *entryList) Remove(id EntryID) {
+	select {
+	case <-l.ctx.Done():
+		return
+	case l.remove <- id:
+	}
+}
+
+func (l *entryList) Snapshot() []*Entry {
+	ch := make(chan []*Entry)
+
+	select {
+	case <-l.ctx.Done():
+		return nil
+	case l.snapshot <- ch:
+	}
+
+	select {
+	case <-l.ctx.Done():
+		return nil
+	case l := <-ch:
+		return l
+	}
+}
+
+func (l *entryList) Run() {
+	ctx, cancel := context.WithCancel(l.ctx)
+	defer cancel()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case e := <-l.add:
+			l.entries = append(l.entries, e)
+			e.Next = e.Schedule.Next(time.Now())
+			l.changedCondMu.Lock()
+			l.changed = true
+			l.changedCondMu.Unlock()
+		case id := <-l.remove:
+			for i, e := range l.entries {
+				if id == e.ID {
+					l.entries = append(append([]*Entry(nil), l.entries[:i]...), l.entries[i+1:]...)
+					break
+				}
+			}
+			l.changedCondMu.Lock()
+			l.changed = true
+			l.changedCondMu.Unlock()
+		case ch := <-l.snapshot:
+			snapshot := make([]*Entry, len(l.entries))
+			for i, e := range l.entries {
+				snapshot[i] = e
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- snapshot:
+				close(ch)
+			}
+		}
+	}
+}
+
 // New returns a new Cron job runner.
 func New(ctx context.Context) *Cron {
 	return &Cron{
 		ctx:      ctx,
 		idgen:    newIDGen(ctx),
+		entries:  newEntryList(ctx),
 		add:      make(chan *Entry),
 		snapshot: make(chan []Entry),
 		remove:   make(chan EntryID),
@@ -62,21 +171,21 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
 		Schedule: schedule,
 		Job:      cmd,
 	}
-	if !c.Running() {
-		c.entries = append(c.entries, entry)
-	} else {
-		c.add <- entry
-	}
+	c.entries.Add(entry)
 	return entry.ID
 }
 
 // Entries returns a snapshot of the cron entries.
 func (c *Cron) Entries() []Entry {
-	if c.Running() {
-		c.snapshot <- nil
-		return <-c.snapshot
+	l := c.entries.Snapshot()
+	if l == nil {
+		return []Entry(nil)
 	}
-	return c.entrySnapshot()
+	ret := make([]Entry, len(l))
+	for i, e := range l {
+		ret[i] = *e
+	}
+	return ret
 }
 
 // Entry returns a snapshot of the given entry, or nil if it couldn't be found.
@@ -91,29 +200,10 @@ func (c *Cron) Entry(id EntryID) Entry {
 
 // Remove an entry from being run in the future.
 func (c *Cron) Remove(id EntryID) {
-	if c.Running() {
-		c.remove <- id
-	} else {
-		c.removeEntry(id)
-	}
-}
-
-func (c *Cron) setRunning(b bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.running = b
-}
-
-func (c *Cron) Running() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.running
+	c.entries.Remove(id)
 }
 
 func (c *Cron) Run(ctx context.Context) {
-	c.setRunning(true)
-	defer func() { c.setRunning(false) }()
-
 	var cancel func()
 	if ctx == nil {
 		ctx, cancel = context.WithCancel(c.ctx)
@@ -124,21 +214,24 @@ func (c *Cron) Run(ctx context.Context) {
 
 	// Figure out the next activation times for each entry.
 	now := time.Now().Local()
-	for _, entry := range c.entries {
+	for _, entry := range c.entries.Snapshot() {
 		entry.Next = entry.Schedule.Next(now)
 	}
 
 	for {
+		entries := c.entries.Snapshot()
+
 		// Determine the next entry to run.
-		sort.Sort(byTime(c.entries))
+		sort.Sort(byTime(entries))
 
 		var effective time.Time
-		if len(c.entries) == 0 || c.entries[0].Next.IsZero() {
-			// If there are no entries yet, just sleep - it still handles new entries
-			// and stop requests.
-			effective = now.AddDate(10, 0, 0)
+		if len(entries) == 0 || entries[0].Next.IsZero() {
+			// If there are no entries yet, just sleep until there's
+			// a change in the entries list
+			c.entries.Changed()
+			continue
 		} else {
-			effective = c.entries[0].Next
+			effective = entries[0].Next
 		}
 
 		select {
@@ -146,7 +239,7 @@ func (c *Cron) Run(ctx context.Context) {
 			return
 		case now = <-time.After(effective.Sub(now)):
 			// Run every entry whose next time was this effective time.
-			for _, e := range c.entries {
+			for _, e := range entries {
 				if e.Next != effective {
 					break
 				}
@@ -155,37 +248,8 @@ func (c *Cron) Run(ctx context.Context) {
 				e.Next = e.Schedule.Next(effective)
 			}
 			continue
-
-		case newEntry := <-c.add:
-			c.entries = append(c.entries, newEntry)
-			newEntry.Next = newEntry.Schedule.Next(now)
-
-		case <-c.snapshot:
-			c.snapshot <- c.entrySnapshot()
-
-		case id := <-c.remove:
-			c.removeEntry(id)
 		}
 
 		now = time.Now().Local()
 	}
-}
-
-// entrySnapshot returns a copy of the current cron entry list.
-func (c *Cron) entrySnapshot() []Entry {
-	var entries = make([]Entry, len(c.entries))
-	for i, e := range c.entries {
-		entries[i] = *e
-	}
-	return entries
-}
-
-func (c *Cron) removeEntry(id EntryID) {
-	var entries []*Entry
-	for _, e := range c.entries {
-		if e.ID != id {
-			entries = append(entries, e)
-		}
-	}
-	c.entries = entries
 }
