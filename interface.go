@@ -10,13 +10,14 @@ import (
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
+	ctx      context.Context
 	entries  []*Entry
+	idgen    chan EntryID
 	add      chan *Entry
 	mu       sync.RWMutex
 	remove   chan EntryID
 	snapshot chan []Entry
 	running  bool
-	nextID   EntryID
 }
 
 // Job is an interface for submitted cron jobs.

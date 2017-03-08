@@ -25,13 +25,13 @@ func (s byTime) Less(i, j int) bool {
 }
 
 // New returns a new Cron job runner.
-func New() *Cron {
+func New(ctx context.Context) *Cron {
 	return &Cron{
-		entries:  nil,
+		ctx:      ctx,
+		idgen:    newIDGen(ctx),
 		add:      make(chan *Entry),
 		snapshot: make(chan []Entry),
 		remove:   make(chan EntryID),
-		running:  false,
 	}
 }
 
@@ -56,9 +56,9 @@ func (c *Cron) AddJob(spec string, cmd Job) (EntryID, error) {
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
 func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
-	c.nextID++
+	nextID := <-c.idgen
 	entry := &Entry{
-		ID:       c.nextID,
+		ID:       nextID,
 		Schedule: schedule,
 		Job:      cmd,
 	}
@@ -113,6 +113,14 @@ func (c *Cron) Running() bool {
 func (c *Cron) Run(ctx context.Context) {
 	c.setRunning(true)
 	defer func() { c.setRunning(false) }()
+
+	var cancel func()
+	if ctx == nil {
+		ctx, cancel = context.WithCancel(c.ctx)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
+	defer cancel()
 
 	// Figure out the next activation times for each entry.
 	now := time.Now().Local()
