@@ -146,6 +146,15 @@ func (c *Cron) Start() {
 	go c.run()
 }
 
+// Run the cron scheduler, or no-op if already running.
+func (c *Cron) Run() {
+	if c.running {
+		return
+	}
+	c.running = true
+	c.run()
+}
+
 func (c *Cron) runWithRecovery(j Job) {
 	defer func() {
 		if r := recover(); r != nil {
