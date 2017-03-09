@@ -1,12 +1,32 @@
 package cron
 
-import "time"
+import (
+	"time"
+	"encoding/json"
+	"strconv"
+)
 
 // SpecSchedule specifies a duty cycle (to the second granularity), based on a
 // traditional crontab specification. It is computed initially and stored as bit sets.
 type SpecSchedule struct {
 	Second, Minute, Hour, Dom, Month, Dow uint64
 }
+
+func (s *SpecSchedule)MarshalJSON()([]byte, error) {
+	data := struct {
+		Second, Minute, Hour, Dom, Month, Dow, Cat string
+	}{
+		Second: strconv.FormatUint(s.Second, 10),
+		Minute: strconv.FormatUint(s.Minute, 10),
+		Hour: strconv.FormatUint(s.Hour, 10),
+		Dom: strconv.FormatUint(s.Dom, 10),
+		Month: strconv.FormatUint(s.Month, 10),
+		Dow: strconv.FormatUint(s.Dow, 10),
+		Cat: "SpecSchedule",
+	}
+	return json.Marshal(data)
+}
+
 
 // bounds provides a range of acceptable values (plus a map of name to value).
 type bounds struct {

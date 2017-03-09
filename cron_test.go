@@ -5,12 +5,174 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"github.com/stretchr/testify/assert"
+	"strings"
+	"bytes"
 )
 
 // Many tests schedule a job for every second, and then wait at most a second
 // for it to run.  This amount is just slightly larger than 1 second to
 // compensate for a few milliseconds of runtime.
 const ONE_SECOND = 1*time.Second + 10*time.Millisecond
+
+func TestPresetJob_Run(t *testing.T) {
+	result := 0
+	cron := New()
+	cron.functions["job1"] = ScheduledJob(func(params...interface{}) error {
+		result = params[0].(int) + params[1].(int)
+		return nil
+	})
+	arbitraryJob := PresetJob{
+		cron:cron,
+		JobName: "job1",
+		Parameters: []interface{}{1, 1},
+	}
+	arbitraryJob.Run()
+	assert.Equal(t, 2, result, "Result of `1 + 1` expected to be 2")
+}
+
+func TestCron_Persist(t *testing.T) {
+	cron := New()
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	cron.RegisterPresetJob("job1", ScheduledJob(func(params...interface{}) error {
+		wg.Done()
+		return nil
+	}))
+	cron.AddJob("* * * * * ?", PresetJob{Parameters: []interface{}{}, JobName: "job1", cron: cron})
+	cron.Start()
+	defer cron.Stop()
+	buffer := bytes.NewBuffer([]byte{})
+	err := cron.PersistToWriter(buffer)
+	if err != nil {
+		t.FailNow()
+	}
+	data := string(buffer.Bytes())
+	if data == "" || !strings.Contains(data, "{\"Entries\"") {
+		t.FailNow()
+	}
+	// the job should finish within max 1 secs
+	select {
+	case <-time.After(ONE_SECOND):
+		t.FailNow()
+	case <-wait(wg):
+	}
+}
+
+func TestParseJob(t *testing.T) {
+	cron := New()
+	job, err := parseJob(cron, map[string]interface{}{
+		"ScheduledJob": "job1",
+		"Parameters": []interface{}{1, 2},
+		"Cat": "ArbitraryJob",
+	})
+	assert.NoError(t, err)
+	assert.IsType(t, PresetJob{}, job)
+	assert.Equal(t, job.(PresetJob).JobName, "job1")
+	assert.Equal(t, len(job.(PresetJob).Parameters), 2)
+}
+
+func TestParseSchedule(t *testing.T) {
+	schedule, err := parseSchedule(map[string]interface{}{
+		"Cat": "SpecSchedule",
+		"Dom": "9223372041149743102",
+		"Dow":"9223372036854775935",
+		"Second":"10376293541461622783",
+		"Minute":"10376293541461622783",
+		"Hour":"9223372036871553023",
+		"Month":"9223372036854783998",
+	})
+	assert.NoError(t, err)
+	assert.IsType(t, &SpecSchedule{}, schedule)
+	assert.Equal(t, schedule.(*SpecSchedule).Dom, uint64(9223372041149743102))
+	assert.Equal(t, schedule.(*SpecSchedule).Dow, uint64(9223372036854775935))
+	assert.Equal(t, schedule.(*SpecSchedule).Second, uint64(10376293541461622783))
+	assert.Equal(t, schedule.(*SpecSchedule).Minute, uint64(10376293541461622783))
+	assert.Equal(t, schedule.(*SpecSchedule).Hour, uint64(9223372036871553023))
+	assert.Equal(t, schedule.(*SpecSchedule).Month, uint64(9223372036854783998))
+}
+
+func TestParseSchedule2(t *testing.T) {
+	schedule, err := parseSchedule(map[string]interface{}{
+		"Cat": "FixedSchedule",
+		"FixedTime": time.Time{}.String(),
+	})
+	assert.NoError(t, err)
+	assert.IsType(t, &FixedSchedule{}, schedule)
+	assert.Equal(t, schedule.(*FixedSchedule).FixedTime, time.Time{})
+}
+
+func TestRestore(t *testing.T) {
+	j := `{"Entries":[{"Schedule":{"Second":"10376293541461622783","Minute":"10376293541461622783","Hour":"9223372036871553023","Dom":"9223372041149743102","Month":"9223372036854783998","Dow":"9223372036854775935","Cat":"SpecSchedule"},"Next":"0001-01-01T00:00:00Z","Prev":"0001-01-01T00:00:00Z","Job":{"ScheduledJob":"job1","Parameters":[],"Cat":"ArbitraryJob"}}],"Running":false,"Location":{}}`
+	buffer := bytes.NewBufferString(j)
+	cron, err := NewFromReader(buffer)
+	assert.NoError(t, err)
+	assert.NotNil(t, cron)
+	assert.Equal(t, 1, len(cron.entries))
+	assert.Equal(t, cron.entries[0].Schedule.(*SpecSchedule).Dow, uint64(9223372036854775935))
+}
+
+// Test fixed time entry
+func TestFixedSchedule(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	cron.AddOneOffFunc(time.Now().Add(2 * time.Second), func() { wg.Done() })
+	cron.Start()
+	defer cron.Stop()
+
+	// Cron should fire in 2 seconds. After 1 second, call Entries.
+	select {
+	case <-time.After(ONE_SECOND):
+		cron.Entries()
+	}
+
+	// Even though Entries was called, the cron should fire at the 2 second mark.
+	select {
+	case <-time.After(ONE_SECOND):
+		t.FailNow()
+	case <-wait(wg):
+	}
+}
+
+// Adds a job and removes it - it should never be called.
+func TestCron_RemoveIndex(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	cron.AddOneOffFuncWithIndex(time.Now().Add(time.Second), func() { wg.Done() }, "test1")
+	cron.Start()
+	defer cron.Stop()
+	cron.RemoveIndex("test1")
+
+	// wait 1.01 secs, if we got called in 1.00 sec we failed as the job has been removed.
+	select {
+	case <-time.After(ONE_SECOND):
+	case <-wait(wg):
+		t.FailNow()
+	}
+}
+
+// Adds a job and removes it - it should never be called.
+func TestCron_RemoveIndex2(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	cron.AddOneOffFuncWithIndex(time.Now().Add(time.Second), func() { wg.Done() }, "test2")
+	cron.Start()
+	defer cron.Stop()
+	cron.RemoveIndex("test1")
+
+	// wait 2 secs, the job should run in 1 sec.
+	select {
+	case <-time.After(2 * time.Second):
+		t.FailNow()
+	case <-wait(wg):
+	}
+}
 
 func TestFuncPanicRecovery(t *testing.T) {
 	cron := New()
