@@ -175,6 +175,10 @@ func TestParse(t *testing.T) {
 			expr: "* * * *",
 			err:  "Expected 5 to 6 fields",
 		},
+		{
+			expr: "",
+			err:  "Empty spec string",
+		},
 	}
 
 	for _, c := range entries {

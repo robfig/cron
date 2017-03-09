@@ -76,6 +76,9 @@ func NewParser(options ParseOption) Parser {
 // It returns a descriptive error if the spec is not valid.
 // It accepts crontab specs and features configured by NewParser.
 func (p Parser) Parse(spec string) (Schedule, error) {
+	if len(spec) == 0 {
+		return nil, fmt.Errorf("Empty spec string")
+	}
 	if spec[0] == '@' && p.options&Descriptor > 0 {
 		return parseDescriptor(spec)
 	}
