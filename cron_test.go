@@ -271,6 +271,13 @@ func TestStopWithoutStart(t *testing.T) {
 	cron.Stop()
 }
 
+// Test that cron is running or not
+func TestIsRunning(t *testing.T) {
+	cron := New()
+	fmt.Println(cron.IsRunning())
+	cron.Stop()
+}
+
 type testJob struct {
 	wg   *sync.WaitGroup
 	name string
