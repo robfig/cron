@@ -125,6 +125,47 @@ func TestAddWhileRunningWithDelay(t *testing.T) {
 	}
 }
 
+// Add a job, delete immediatly, start cron, expect it doesn't run.
+func TestDelBeforeRunning(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	jobId, _ := cron.AddFunc("* * * * * ?", func() { wg.Done() })
+	cron.DelJob(jobId)
+	cron.Start()
+	defer cron.Stop()
+
+	// Give cron 2 seconds to run our job (which is always activated).
+	select {
+	case <-time.After(ONE_SECOND):
+	case <-wait(wg):
+		t.FailNow()
+	}
+}
+
+// Add a job, start cron, delete it later, expect it doesn't run any logger.
+func TestDelWhileRunning(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(5)
+
+	cron := New()
+	jobId, _ := cron.AddFunc("* * * * * ?", func() { wg.Done() })
+	cron.Start()
+	defer cron.Stop()
+
+	select {
+	case <-time.After(3*time.Second):
+	}
+
+	cron.DelJob(jobId)
+	select {
+	case <-time.After(3*time.Second):
+	case <-wait(wg):
+		t.FailNow()
+	}
+}
+
 // Test timing with Entries.
 func TestSnapshotEntries(t *testing.T) {
 	wg := &sync.WaitGroup{}

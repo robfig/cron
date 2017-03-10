@@ -5,7 +5,10 @@ import (
 	"runtime"
 	"sort"
 	"time"
+	"sync/atomic"
 )
+
+const CHAN_SIZE int = 100
 
 // Cron keeps track of any number of entries, invoking the associated func as
 // specified by the schedule. It may be started, stopped, and the entries may
@@ -14,10 +17,12 @@ type Cron struct {
 	entries  []*Entry
 	stop     chan struct{}
 	add      chan *Entry
+	del      chan int64
 	snapshot chan []*Entry
 	running  bool
 	ErrorLog *log.Logger
 	location *time.Location
+	nextJobId int64
 }
 
 // Job is an interface for submitted cron jobs.
@@ -47,6 +52,9 @@ type Entry struct {
 
 	// The Job to run.
 	Job Job
+
+	// The Job id
+	JobId int64
 }
 
 // byTime is a wrapper for sorting the entry array by time
@@ -77,7 +85,8 @@ func New() *Cron {
 func NewWithLocation(location *time.Location) *Cron {
 	return &Cron{
 		entries:  nil,
-		add:      make(chan *Entry),
+		add:      make(chan *Entry, CHAN_SIZE),
+		del:      make(chan int64, CHAN_SIZE),
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
 		running:  false,
@@ -92,32 +101,40 @@ type FuncJob func()
 func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
-func (c *Cron) AddFunc(spec string, cmd func()) error {
+func (c *Cron) AddFunc(spec string, cmd func()) (int64, error) {
 	return c.AddJob(spec, FuncJob(cmd))
 }
 
 // AddJob adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) AddJob(spec string, cmd Job) error {
+func (c *Cron) AddJob(spec string, cmd Job) (int64, error) {
 	schedule, err := Parse(spec)
 	if err != nil {
-		return err
+		return -1, err
 	}
-	c.Schedule(schedule, cmd)
-	return nil
+	jobId := c.Schedule(schedule, cmd)
+	return jobId, nil
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) Schedule(schedule Schedule, cmd Job) {
+func (c *Cron) Schedule(schedule Schedule, cmd Job) int64 {
+	jobId := atomic.AddInt64(&c.nextJobId, 1)
 	entry := &Entry{
 		Schedule: schedule,
 		Job:      cmd,
+		JobId:    jobId,
 	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
-		return
+		return jobId
 	}
 
 	c.add <- entry
+	return jobId
+}
+
+// DelJob deletes a Job from Cron.
+func (c *Cron) DelJob(jobId int64) {
+	c.del <- jobId
 }
 
 // Entries returns a snapshot of the cron entries.
@@ -205,6 +222,15 @@ func (c *Cron) run() {
 		case newEntry := <-c.add:
 			c.entries = append(c.entries, newEntry)
 			newEntry.Next = newEntry.Schedule.Next(time.Now().In(c.location))
+
+		case jobId := <-c.del:
+			for i, e := range c.entries {
+				if e.JobId == jobId {
+					// https://github.com/golang/go/wiki/SliceTricks, Delete without preserving order
+					c.entries[i] = c.entries[len(c.entries)-1]
+					c.entries = c.entries[:len(c.entries)-1]
+				}
+			}
 
 		case <-c.snapshot:
 			c.snapshot <- c.entrySnapshot()
