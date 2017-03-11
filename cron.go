@@ -99,6 +99,19 @@ func (c *Cron) AddFunc(id string, spec string, cmd func()) error {
 	return c.AddJob(id, spec, FuncJob(cmd))
 }
 
+// RemoveFunc removes a func from the Cron.
+func (c *Cron) RemoveFunc(id string) error {
+	w := 0
+	for _, x := range c.entries {
+		if id == x.Id {
+			break
+		}
+		w++
+	}
+	c.entries = append(c.entries[:w], c.entries[(w+1):]...)
+	return nil
+}
+
 // AddJob adds a Job to the Cron to be run on the given schedule.
 func (c *Cron) AddJob(id string, spec string, cmd Job) error {
 	schedule, err := Parse(spec)
