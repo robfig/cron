@@ -95,7 +95,7 @@ type FuncJob func()
 func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
-func (c *Cron) AddFunc(id, string, spec string, cmd func()) error {
+func (c *Cron) AddFunc(id string, spec string, cmd func()) error {
 	return c.AddJob(id, spec, FuncJob(cmd))
 }
 
