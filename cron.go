@@ -1,65 +1,24 @@
-// Package cron implements a cron spec parser and runner.
-package cron // import "gopkg.in/robfig/cron.v2"
+package cron
 
 import (
+	"context"
 	"sort"
+	"sync"
 	"time"
 )
 
-// Cron keeps track of any number of entries, invoking the associated func as
-// specified by the schedule. It may be started, stopped, and the entries may
-// be inspected while running.
-type Cron struct {
-	entries  []*Entry
-	stop     chan struct{}
-	add      chan *Entry
-	remove   chan EntryID
-	snapshot chan []Entry
-	running  bool
-	nextID   EntryID
+func (e *entry) ID() EntryID {
+	return e.id
 }
-
-// Job is an interface for submitted cron jobs.
-type Job interface {
-	Run()
+func (e *entry) Next() time.Time {
+	return e.next
 }
-
-// Schedule describes a job's duty cycle.
-type Schedule interface {
-	// Next returns the next activation time, later than the given time.
-	// Next is invoked initially, and then each time the job is run.
-	Next(time.Time) time.Time
+func (e *entry) ComputeNext(t time.Time) {
+	e.next = e.schedule.Next(time.Now())
 }
-
-// EntryID identifies an entry within a Cron instance
-type EntryID int
-
-// Entry consists of a schedule and the func to execute on that schedule.
-type Entry struct {
-	// ID is the cron-assigned ID of this entry, which may be used to look up a
-	// snapshot or remove it.
-	ID EntryID
-
-	// Schedule on which this job should be run.
-	Schedule Schedule
-
-	// Next time the job will run, or the zero time if Cron has not been
-	// started or this entry's schedule is unsatisfiable
-	Next time.Time
-
-	// Prev is the last time this job was run, or the zero time if never.
-	Prev time.Time
-
-	// Job is the thing to run when the Schedule is activated.
-	Job Job
+func (e *entry) Run(ctx context.Context) {
+	e.job.Run(ctx)
 }
-
-// Valid returns true if this is not the zero entry.
-func (e Entry) Valid() bool { return e.ID != 0 }
-
-// byTime is a wrapper for sorting the entry array by time
-// (with zero time at the end).
-type byTime []*Entry
 
 func (s byTime) Len() int      { return len(s) }
 func (s byTime) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
@@ -67,34 +26,145 @@ func (s byTime) Less(i, j int) bool {
 	// Two zero times should return false.
 	// Otherwise, zero is "greater" than any other time.
 	// (To sort it at the end of the list.)
-	if s[i].Next.IsZero() {
+	nextI := s[i].Next()
+	nextJ := s[j].Next()
+	if nextI.IsZero() {
 		return false
 	}
-	if s[j].Next.IsZero() {
+	if nextJ.IsZero() {
 		return true
 	}
-	return s[i].Next.Before(s[j].Next)
+	return nextI.Before(nextJ)
+}
+
+type entryList struct {
+	add           chan Entry
+	ctx           context.Context
+	changed       bool
+	changedCond   *sync.Cond
+	changedCondMu *sync.Mutex
+	entries       []Entry
+	remove        chan EntryID
+	snapshot      chan chan []Entry
+}
+
+func newEntryList(ctx context.Context) *entryList {
+	mu := &sync.Mutex{}
+	l := &entryList{
+		add:           make(chan Entry),
+		changedCond:   sync.NewCond(mu),
+		changedCondMu: mu,
+		ctx:           ctx,
+		remove:        make(chan EntryID),
+		snapshot:      make(chan (chan []Entry)),
+	}
+	go l.Run()
+	return l
+}
+
+func (l *entryList) Changed() bool {
+	l.changedCondMu.Lock()
+	for !l.changed {
+		l.changedCond.Wait()
+	}
+	l.changed = false
+	l.changedCondMu.Unlock()
+	return true
+}
+
+func (l *entryList) Add(e Entry) {
+	select {
+	case <-l.ctx.Done():
+		return
+	case l.add <- e:
+	}
+}
+
+func (l *entryList) Remove(id EntryID) {
+	select {
+	case <-l.ctx.Done():
+		return
+	case l.remove <- id:
+	}
+}
+
+func (l *entryList) Snapshot() []Entry {
+	ch := make(chan []Entry)
+
+	select {
+	case <-l.ctx.Done():
+		return nil
+	case l.snapshot <- ch:
+	}
+
+	select {
+	case <-l.ctx.Done():
+		return nil
+	case l := <-ch:
+		return l
+	}
+}
+
+func (l *entryList) Run() {
+	ctx, cancel := context.WithCancel(l.ctx)
+	defer cancel()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case e := <-l.add:
+			l.entries = append(l.entries, e)
+			e.ComputeNext(time.Now())
+			l.changedCondMu.Lock()
+			l.changed = true
+			l.changedCond.Broadcast()
+			l.changedCondMu.Unlock()
+		case id := <-l.remove:
+			for i, e := range l.entries {
+				if id == e.ID() {
+					l.entries = append(append([]Entry(nil), l.entries[:i]...), l.entries[i+1:]...)
+					break
+				}
+			}
+			l.changedCondMu.Lock()
+			l.changed = true
+			l.changedCond.Broadcast()
+			l.changedCondMu.Unlock()
+		case ch := <-l.snapshot:
+			snapshot := make([]Entry, len(l.entries))
+			for i, e := range l.entries {
+				snapshot[i] = e
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- snapshot:
+				close(ch)
+			}
+		}
+	}
 }
 
 // New returns a new Cron job runner.
-func New() *Cron {
+func New(ctx context.Context) *Cron {
 	return &Cron{
-		entries:  nil,
-		add:      make(chan *Entry),
-		stop:     make(chan struct{}),
+		ctx:      ctx,
+		idgen:    newIDGen(ctx),
+		entries:  newEntryList(ctx),
+		add:      make(chan Entry),
 		snapshot: make(chan []Entry),
 		remove:   make(chan EntryID),
-		running:  false,
 	}
 }
 
 // FuncJob is a wrapper that turns a func() into a cron.Job
-type FuncJob func()
+type FuncJob func(context.Context)
 
-func (f FuncJob) Run() { f() }
+func (f FuncJob) Run(ctx context.Context) { f(ctx) }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
-func (c *Cron) AddFunc(spec string, cmd func()) (EntryID, error) {
+func (c *Cron) AddFunc(spec string, cmd func(context.Context)) (EntryID, error) {
 	return c.AddJob(spec, FuncJob(cmd))
 }
 
@@ -109,128 +179,92 @@ func (c *Cron) AddJob(spec string, cmd Job) (EntryID, error) {
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
 func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
-	c.nextID++
-	entry := &Entry{
-		ID:       c.nextID,
-		Schedule: schedule,
-		Job:      cmd,
+	nextID := <-c.idgen
+	entry := &entry{
+		id:       nextID,
+		schedule: schedule,
+		job:      cmd,
 	}
-	if !c.running {
-		c.entries = append(c.entries, entry)
-	} else {
-		c.add <- entry
-	}
-	return entry.ID
+	c.entries.Add(entry)
+	return entry.ID()
 }
 
 // Entries returns a snapshot of the cron entries.
 func (c *Cron) Entries() []Entry {
-	if c.running {
-		c.snapshot <- nil
-		return <-c.snapshot
+	l := c.entries.Snapshot()
+	if l == nil {
+		return []Entry(nil)
 	}
-	return c.entrySnapshot()
+	ret := make([]Entry, len(l))
+	for i, e := range l {
+		ret[i] = e
+	}
+	return ret
 }
 
 // Entry returns a snapshot of the given entry, or nil if it couldn't be found.
 func (c *Cron) Entry(id EntryID) Entry {
 	for _, entry := range c.Entries() {
-		if id == entry.ID {
+		if id == entry.ID() {
 			return entry
 		}
 	}
-	return Entry{}
+	return nil
 }
 
 // Remove an entry from being run in the future.
 func (c *Cron) Remove(id EntryID) {
-	if c.running {
-		c.remove <- id
+	c.entries.Remove(id)
+}
+
+// Run starts the cron dispatcher. Cancel the given context
+// object when you want to stop the dispatcher.
+func (c *Cron) Run(ctx context.Context) {
+	var cancel func()
+	if ctx == nil {
+		ctx, cancel = context.WithCancel(c.ctx)
 	} else {
-		c.removeEntry(id)
+		ctx, cancel = context.WithCancel(ctx)
 	}
-}
+	defer cancel()
 
-// Start the cron scheduler in its own go-routine.
-func (c *Cron) Start() {
-	c.running = true
-	go c.run()
-}
-
-// run the scheduler.. this is private just due to the need to synchronize
-// access to the 'running' state variable.
-func (c *Cron) run() {
 	// Figure out the next activation times for each entry.
 	now := time.Now().Local()
-	for _, entry := range c.entries {
-		entry.Next = entry.Schedule.Next(now)
+	for _, entry := range c.entries.Snapshot() {
+		entry.ComputeNext(now)
 	}
 
 	for {
+		entries := c.entries.Snapshot()
+
 		// Determine the next entry to run.
-		sort.Sort(byTime(c.entries))
+		sort.Sort(byTime(entries))
 
 		var effective time.Time
-		if len(c.entries) == 0 || c.entries[0].Next.IsZero() {
-			// If there are no entries yet, just sleep - it still handles new entries
-			// and stop requests.
-			effective = now.AddDate(10, 0, 0)
+		if len(entries) == 0 || entries[0].Next().IsZero() {
+			// If there are no entries yet, just sleep until there's
+			// a change in the entries list
+			c.entries.Changed()
+			continue
 		} else {
-			effective = c.entries[0].Next
+			effective = entries[0].Next()
 		}
 
 		select {
+		case <-ctx.Done():
+			return
 		case now = <-time.After(effective.Sub(now)):
 			// Run every entry whose next time was this effective time.
-			for _, e := range c.entries {
-				if e.Next != effective {
+			for _, e := range entries {
+				if e.Next() != effective {
 					break
 				}
-				go e.Job.Run()
-				e.Prev = e.Next
-				e.Next = e.Schedule.Next(effective)
+				go e.Run(ctx)
+				e.ComputeNext(effective)
 			}
 			continue
-
-		case newEntry := <-c.add:
-			c.entries = append(c.entries, newEntry)
-			newEntry.Next = newEntry.Schedule.Next(now)
-
-		case <-c.snapshot:
-			c.snapshot <- c.entrySnapshot()
-
-		case id := <-c.remove:
-			c.removeEntry(id)
-
-		case <-c.stop:
-			return
 		}
 
 		now = time.Now().Local()
 	}
-}
-
-// Stop the cron scheduler.
-func (c *Cron) Stop() {
-	c.stop <- struct{}{}
-	c.running = false
-}
-
-// entrySnapshot returns a copy of the current cron entry list.
-func (c *Cron) entrySnapshot() []Entry {
-	var entries = make([]Entry, len(c.entries))
-	for i, e := range c.entries {
-		entries[i] = *e
-	}
-	return entries
-}
-
-func (c *Cron) removeEntry(id EntryID) {
-	var entries []*Entry
-	for _, e := range c.entries {
-		if e.ID != id {
-			entries = append(entries, e)
-		}
-	}
-	c.entries = entries
 }

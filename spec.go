@@ -1,18 +1,48 @@
 package cron
 
-import "time"
+import (
+	"time"
 
-// SpecSchedule specifies a duty cycle (to the second granularity), based on a
+	"github.com/pkg/errors"
+)
+
+// Every returns a crontab Schedule that activates once every duration.
+// Delays of less than a second are not supported (will round up to 1 second).
+// Any fields less than a Second are truncated.
+func Every(duration time.Duration) constantDelay {
+	if duration < time.Second {
+		duration = time.Second
+	}
+
+	return constantDelay{
+		delay: duration - time.Duration(duration.Nanoseconds())%time.Second,
+	}
+}
+
+// Next returns the next time this should be run.
+// This rounds so that the next activation time will be on the second.
+// Satisfies the Schedule interface.
+func (schedule constantDelay) Next(t time.Time) time.Time {
+	return t.Add(schedule.delay - time.Duration(t.Nanosecond())*time.Nanosecond)
+}
+
+// crontabSpec specifies a duty cycle (to the second granularity), based on a
 // traditional crontab specification. It is computed initially and stored as bit sets.
-type SpecSchedule struct {
-	Second, Minute, Hour, Dom, Month, Dow uint64
-	Location                              *time.Location
+type crontabSpec struct {
+	second   uint64
+	minute   uint64
+	hour     uint64
+	dom      uint64
+	month    uint64
+	dow      uint64
+	location *time.Location
 }
 
 // bounds provides a range of acceptable values (plus a map of name to value).
 type bounds struct {
-	min, max uint
-	names    map[string]uint
+	min   uint
+	max   uint
+	names map[string]uint
 }
 
 // The bounds for each field.
@@ -51,9 +81,29 @@ const (
 	starBit = 1 << 63
 )
 
+func (s *crontabSpec) set(fieldName string, v uint64) error {
+	switch fieldName {
+	case "seconds":
+		s.second = v
+	case "minutes":
+		s.minute = v
+	case "hours":
+		s.hour = v
+	case "dom":
+		s.dom = v
+	case "month":
+		s.month = v
+	case "dow":
+		s.dow = v
+	default:
+		return errors.Errorf("unknown crontabSpec field %s", fieldName)
+	}
+	return nil
+}
+
 // Next returns the next time this schedule is activated, greater than the given
 // time.  If no time can be found to satisfy the schedule, return the zero time.
-func (s *SpecSchedule) Next(t time.Time) time.Time {
+func (s *crontabSpec) Next(t time.Time) time.Time {
 	// General approach:
 	// For Month, Day, Hour, Minute, Second:
 	// Check if the time value matches.  If yes, continue to the next field.
@@ -65,7 +115,7 @@ func (s *SpecSchedule) Next(t time.Time) time.Time {
 	// Convert the given time into the schedule's timezone.
 	// Save the original timezone so we can convert back after we find a time.
 	origLocation := t.Location()
-	t = t.In(s.Location)
+	t = t.In(s.location)
 
 	// Start at the earliest possible time (the upcoming second).
 	t = t.Add(1*time.Second - time.Duration(t.Nanosecond())*time.Nanosecond)
@@ -83,12 +133,12 @@ WRAP:
 
 	// Find the first applicable month.
 	// If it's this month, then do nothing.
-	for 1<<uint(t.Month())&s.Month == 0 {
+	for 1<<uint(t.Month())&s.month == 0 {
 		// If we have to add a month, reset the other parts to 0.
 		if !added {
 			added = true
 			// Otherwise, set the date at the beginning (since the current time is irrelevant).
-			t = time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, s.Location)
+			t = time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, s.location)
 		}
 		t = t.AddDate(0, 1, 0)
 
@@ -102,7 +152,7 @@ WRAP:
 	for !dayMatches(s, t) {
 		if !added {
 			added = true
-			t = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, s.Location)
+			t = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, s.location)
 		}
 		t = t.AddDate(0, 0, 1)
 
@@ -111,7 +161,7 @@ WRAP:
 		}
 	}
 
-	for 1<<uint(t.Hour())&s.Hour == 0 {
+	for 1<<uint(t.Hour())&s.hour == 0 {
 		if !added {
 			added = true
 			t = t.Truncate(time.Hour)
@@ -123,7 +173,7 @@ WRAP:
 		}
 	}
 
-	for 1<<uint(t.Minute())&s.Minute == 0 {
+	for 1<<uint(t.Minute())&s.minute == 0 {
 		if !added {
 			added = true
 			t = t.Truncate(time.Minute)
@@ -135,7 +185,7 @@ WRAP:
 		}
 	}
 
-	for 1<<uint(t.Second())&s.Second == 0 {
+	for 1<<uint(t.Second())&s.second == 0 {
 		if !added {
 			added = true
 			t = t.Truncate(time.Second)
@@ -152,13 +202,13 @@ WRAP:
 
 // dayMatches returns true if the schedule's day-of-week and day-of-month
 // restrictions are satisfied by the given time.
-func dayMatches(s *SpecSchedule, t time.Time) bool {
+func dayMatches(s *crontabSpec, t time.Time) bool {
 	var (
-		domMatch bool = 1<<uint(t.Day())&s.Dom > 0
-		dowMatch bool = 1<<uint(t.Weekday())&s.Dow > 0
+		domMatch bool = 1<<uint(t.Day())&s.dom > 0
+		dowMatch bool = 1<<uint(t.Weekday())&s.dow > 0
 	)
 
-	if s.Dom&starBit > 0 || s.Dow&starBit > 0 {
+	if s.dom&starBit > 0 || s.dow&starBit > 0 {
 		return domMatch && dowMatch
 	}
 	return domMatch || dowMatch
