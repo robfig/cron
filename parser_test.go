@@ -136,10 +136,10 @@ func TestParseSchedule(t *testing.T) {
 	}
 }
 
-func every5min(loc *time.Location) *SpecSchedule {
-	return &SpecSchedule{1 << 0, 1 << 5, all(hours), all(dom), all(months), all(dow), loc}
+func every5min(loc *time.Location) *crontabSpec {
+	return &crontabSpec{1 << 0, 1 << 5, all(hours), all(dom), all(months), all(dow), loc}
 }
 
-func midnight(loc *time.Location) *SpecSchedule {
-	return &SpecSchedule{1, 1, 1, all(dom), all(months), all(dow), loc}
+func midnight(loc *time.Location) *crontabSpec {
+	return &crontabSpec{1, 1, 1, all(dom), all(months), all(dow), loc}
 }

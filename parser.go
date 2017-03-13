@@ -5,9 +5,59 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/pkg/errors"
 )
+
+type parseCtx struct {
+	s   string
+	loc *time.Location
+}
+
+func parseTZ(ctx *parseCtx) error {
+	const tzprefix = `TZ=`
+	if !strings.HasPrefix(ctx.s, tzprefix) {
+		return nil
+	}
+
+	ctx.s = ctx.s[3:]
+	// peek until we find something other than a whitespace
+	var i int
+	for s := ctx.s; ; {
+		r, w := utf8.DecodeRuneInString(s)
+		if r == utf8.RuneError {
+			return errors.Errorf(`failed to parse rune: %s`, ctx.s)
+		}
+		if unicode.IsSpace(r) {
+			break
+		}
+		s = s[w:]
+		i += w
+	}
+
+	loc, err := time.LoadLocation(ctx.s[0:i])
+	if err != nil {
+		return errors.Wrapf(err, `provided bad location %s`, ctx.s[0:i])
+	}
+
+	for s := ctx.s[i:]; ; {
+		r, w := utf8.DecodeRuneInString(s)
+		if r == utf8.RuneError {
+			return errors.Errorf(`failed to parse rune: %s`, ctx.s)
+		}
+		if !unicode.IsSpace(r) {
+			break
+		}
+		s = s[w:]
+		i += w
+	}
+
+	ctx.s = ctx.s[i:]
+	ctx.loc = loc
+	return nil
+}
 
 // Parse returns a new crontab schedule representing the given spec.
 // It returns a descriptive error if the spec is not valid.
@@ -16,26 +66,27 @@ import (
 //   - Full crontab specs, e.g. "* * * * * ?"
 //   - Descriptors, e.g. "@midnight", "@every 1h30m"
 func Parse(spec string) (_ Schedule, err error) {
-	// Extract timezone if present
-	var loc = time.Local
-	if strings.HasPrefix(spec, "TZ=") {
-		i := strings.Index(spec, " ")
-		if loc, err = time.LoadLocation(spec[3:i]); err != nil {
-			return nil, errors.Wrapf(err, `provided bad location %s`, spec[3:i])
-		}
-		spec = strings.TrimSpace(spec[i:])
+	var p parseCtx
+	p.s = spec
+	p.loc = time.Local
+
+	if err := parseTZ(&p); err != nil {
+		return nil, errors.Wrap(err, `failed to parse timezone`)
 	}
 
 	// Handle named schedules (descriptors)
-	if strings.HasPrefix(spec, "@") {
-		return parseDescriptor(spec, loc)
+	const descriptorPrefix = `@`
+	if strings.HasPrefix(p.s, descriptorPrefix) {
+		return parseDescriptor(&p)
 	}
 
 	// Split on whitespace.  We require 5 or 6 fields.
 	// (second, optional) (minute) (hour) (day of month) (month) (day of week)
-	fields := strings.Fields(spec)
-	if len(fields) != 5 && len(fields) != 6 {
-		return nil, errors.Errorf("expected 5 or 6 fields, found %d: %s", len(fields), spec)
+	fields := strings.Fields(p.s)
+	switch l := len(fields); l {
+	case 5, 6:
+	default:
+		return nil, errors.Errorf("expected 5 or 6 fields, found %d: %s", l, p.s)
 	}
 
 	// Add 0 for second field if necessary.
@@ -43,10 +94,10 @@ func Parse(spec string) (_ Schedule, err error) {
 		fields = append([]string{"0"}, fields...)
 	}
 
-	var schedule SpecSchedule
-	schedule.Location = loc
+	var schedule crontabSpec
+	schedule.location = p.loc
 
-	getf := func(sched *SpecSchedule, name, s string, r bounds) error {
+	getf := func(sched *crontabSpec, name, s string, r bounds) error {
 		f, err := getField(s, r)
 		if err != nil {
 			return errors.Wrapf(err, `invalid value for %s`, name)
@@ -192,45 +243,44 @@ func all(r bounds) uint64 {
 }
 
 // parseDescriptor returns a pre-defined schedule for the expression
-func parseDescriptor(spec string, loc *time.Location) (Schedule, error) {
+func parseDescriptor(p *parseCtx) (Schedule, error) {
 	const every = "@every "
-	if strings.HasPrefix(spec, every) {
-		duration, err := time.ParseDuration(spec[len(every):])
+	if strings.HasPrefix(p.s, every) {
+		duration, err := time.ParseDuration(p.s[len(every):])
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to parse duration '%s'", spec)
+			return nil, errors.Wrapf(err, "failed to parse duration '%s'", p.s)
 		}
 		return Every(duration), nil
 	}
 
-	var sched SpecSchedule
-	sched.Second = 1 << seconds.min
-	sched.Minute = 1 << minutes.min
-	sched.Hour = 1 << hours.min
-	sched.Dom = 1 << dom.min
-	sched.Month = 1 << months.min
-	sched.Dow = 1 << dow.min
-	sched.Location = loc
-	switch spec {
+	var sched crontabSpec
+	sched.second = 1 << seconds.min
+	sched.minute = 1 << minutes.min
+	sched.hour = 1 << hours.min
+	sched.dom = 1 << dom.min
+	sched.month = 1 << months.min
+	sched.dow = 1 << dow.min
+	sched.location = p.loc
+	switch p.s {
 	case "@yearly", "@annually":
-		sched.Dow = all(dow)
+		sched.dow = all(dow)
 	case "@monthly":
-		sched.Month = all(months)
-		sched.Dow = all(dow)
+		sched.month = all(months)
+		sched.dow = all(dow)
 	case "@weekly":
-		sched.Dom = all(dom)
-		sched.Month = all(months)
+		sched.dom = all(dom)
+		sched.month = all(months)
 	case "@daily", "@midnight":
-		sched.Dom = all(dom)
-		sched.Month = all(months)
-		sched.Dow = all(dow)
+		sched.dom = all(dom)
+		sched.month = all(months)
+		sched.dow = all(dow)
 	case "@hourly":
-		sched.Hour = all(hours)
-		sched.Dom = all(dom)
-		sched.Month = all(months)
-		sched.Dow = all(dow)
+		sched.hour = all(hours)
+		sched.dom = all(dom)
+		sched.month = all(months)
+		sched.dow = all(dow)
 	default:
-		return nil, errors.Errorf("unrecognized descriptor: %s", spec)
+		return nil, errors.Errorf("unrecognized descriptor: %s", p.s)
 	}
 	return &sched, nil
-
 }
