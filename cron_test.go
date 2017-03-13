@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // Many tests schedule a job for every second, and then wait at most a second
@@ -13,7 +15,7 @@ import (
 // compensate for a few milliseconds of runtime.
 const oneSecond = 1*time.Second + 10*time.Millisecond
 
-var noop = func(context.Context){}
+var noop = func(context.Context) {}
 
 func chCloseFn() (func(context.Context), chan struct{}) {
 	ch := make(chan struct{})
@@ -28,10 +30,10 @@ func TestEntryID(t *testing.T) {
 
 	seen := make(map[EntryID]struct{})
 	const max = 100000
+	const pat = `* * * * * ?`
 	for i := 0; i < max; i++ {
-		id, err := cron.AddFunc("* * * * * ?", noop)
-		if err != nil {
-			t.Error("%s", err)
+		id, err := cron.AddFunc(pat, noop)
+		if !assert.NoError(t, err, "failed to add func for `%s`", pat) {
 			return
 		}
 
@@ -43,12 +45,12 @@ func TestEntryID(t *testing.T) {
 	}
 	t.Logf("checked %d IDs, no duplicates", max)
 }
-	
+
 // Start, stop, then add an entry. Verify entry doesn't run.
 func TestStopCausesJobsToNotRun(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	
+
 	f, ch := chCloseFn()
 
 	cron := New(ctx)
@@ -131,14 +133,14 @@ func TestRemoveWhileRunning(t *testing.T) {
 
 	cron := New(ctx)
 	go cron.Run(nil)
-	id, _ := cron.AddFunc("* * * * * ?", func (context.Context) { count++ })
+	id, _ := cron.AddFunc("* * * * * ?", func(context.Context) { count++ })
 
 	// We cannot be sure that the job has already been scheduled
 	// when we removed the id, so we are going to allow the job
 	// being fired ONCE
 	cron.Remove(id)
 
-	<-time.After(5*time.Second)
+	<-time.After(5 * time.Second)
 	if count > 1 {
 		t.Errorf("failed to remove job (count = %d)", count)
 	}
@@ -276,7 +278,7 @@ type tj struct {
 
 func testjob(wg *sync.WaitGroup, name string) *tj {
 	return &tj{
-		wg: wg,
+		wg:   wg,
 		name: name,
 	}
 }
@@ -311,20 +313,20 @@ func TestJob(t *testing.T) {
 
 	// lestrrat: I'm not sure why this is required. will investigate later
 	/*
-	// Ensure the entries are in the right order.
-	expecteds := []string{"job2", "job4", "job5", "job1", "job3", "job0"}
+		// Ensure the entries are in the right order.
+		expecteds := []string{"job2", "job4", "job5", "job1", "job3", "job0"}
 
-	var actuals []string
-	for _, entry := range cron.Entries() {
-		actuals = append(actuals, entry.Job.(tj).name)
-	}
-
-	for i, expected := range expecteds {
-		if actuals[i] != expected {
-			t.Errorf("Jobs not in the right order.  (expected) %s != %s (actual)", expecteds, actuals)
-			t.FailNow()
+		var actuals []string
+		for _, entry := range cron.Entries() {
+			actuals = append(actuals, entry.Job.(tj).name)
 		}
-	}
+
+		for i, expected := range expecteds {
+			if actuals[i] != expected {
+				t.Errorf("Jobs not in the right order.  (expected) %s != %s (actual)", expecteds, actuals)
+				t.FailNow()
+			}
+		}
 	*/
 }
 

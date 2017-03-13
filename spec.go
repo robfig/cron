@@ -1,6 +1,10 @@
 package cron
 
-import "time"
+import (
+	"time"
+
+	"github.com/pkg/errors"
+)
 
 // SpecSchedule specifies a duty cycle (to the second granularity), based on a
 // traditional crontab specification. It is computed initially and stored as bit sets.
@@ -50,6 +54,26 @@ const (
 	// Set the top bit if a star was included in the expression.
 	starBit = 1 << 63
 )
+
+func (s *SpecSchedule) set(fieldName string, v uint64) error {
+	switch fieldName {
+	case "seconds":
+		s.Second = v
+	case "minutes":
+		s.Minute = v
+	case "hours":
+		s.Hour = v
+	case "dom":
+		s.Dom = v
+	case "month":
+		s.Month = v
+	case "dow":
+		s.Dow = v
+	default:
+		return errors.Errorf("unknown SpecSchedule field %s", fieldName)
+	}
+	return nil
+}
 
 // Next returns the next time this schedule is activated, greater than the given
 // time.  If no time can be found to satisfy the schedule, return the zero time.

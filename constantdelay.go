@@ -15,6 +15,7 @@ func Every(duration time.Duration) ConstantDelaySchedule {
 	if duration < time.Second {
 		duration = time.Second
 	}
+
 	return ConstantDelaySchedule{
 		Delay: duration - time.Duration(duration.Nanoseconds())%time.Second,
 	}

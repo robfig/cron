@@ -3,6 +3,8 @@ package cron
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestActivation(t *testing.T) {
@@ -11,61 +13,69 @@ func TestActivation(t *testing.T) {
 		expected   bool
 	}{
 		// Every fifteen minutes.
-		{"Mon Jul 9 15:00 2012", "0/15 * * * *", true},
-		{"Mon Jul 9 15:45 2012", "0/15 * * * *", true},
-		{"Mon Jul 9 15:40 2012", "0/15 * * * *", false},
+		{time: "Mon Jul 9 15:00 2012", spec: "0/15 * * * *", expected: true},
+		{time: "Mon Jul 9 15:45 2012", spec: "0/15 * * * *", expected: true},
+		{time: "Mon Jul 9 15:40 2012", spec: "0/15 * * * *"},
 
 		// Every fifteen minutes, starting at 5 minutes.
-		{"Mon Jul 9 15:05 2012", "5/15 * * * *", true},
-		{"Mon Jul 9 15:20 2012", "5/15 * * * *", true},
-		{"Mon Jul 9 15:50 2012", "5/15 * * * *", true},
+		{time: "Mon Jul 9 15:05 2012", spec: "5/15 * * * *", expected: true},
+		{time: "Mon Jul 9 15:20 2012", spec: "5/15 * * * *", expected: true},
+		{time: "Mon Jul 9 15:50 2012", spec: "5/15 * * * *", expected: true},
 
 		// Named months
-		{"Sun Jul 15 15:00 2012", "0/15 * * Jul *", true},
-		{"Sun Jul 15 15:00 2012", "0/15 * * Jun *", false},
+		{time: "Sun Jul 15 15:00 2012", spec: "0/15 * * Jul *", expected: true},
+		{time: "Sun Jul 15 15:00 2012", spec: "0/15 * * Jun *"},
 
 		// Everything set.
-		{"Sun Jul 15 08:30 2012", "0 30 08 ? Jul Sun", true},
-		{"Sun Jul 15 08:30 2012", "0 30 08 15 Jul ?", true},
-		{"Mon Jul 16 08:30 2012", "0 30 08 ? Jul Sun", false},
-		{"Mon Jul 16 08:30 2012", "0 30 08 15 Jul ?", false},
+		{time: "Sun Jul 15 08:30 2012", spec: "0 30 08 ? Jul Sun", expected: true},
+		{time: "Sun Jul 15 08:30 2012", spec: "0 30 08 15 Jul ?", expected: true},
+		{time: "Mon Jul 16 08:30 2012", spec: "0 30 08 ? Jul Sun"},
+		{time: "Mon Jul 16 08:30 2012", spec: "0 30 08 15 Jul ?"},
 
 		// Predefined schedules
-		{"Mon Jul 9 15:00 2012", "@hourly", true},
-		{"Mon Jul 9 15:04 2012", "@hourly", false},
-		{"Mon Jul 9 15:00 2012", "@daily", false},
-		{"Mon Jul 9 00:00 2012", "@daily", true},
-		{"Mon Jul 9 00:00 2012", "@weekly", false},
-		{"Sun Jul 8 00:00 2012", "@weekly", true},
-		{"Sun Jul 8 01:00 2012", "@weekly", false},
-		{"Sun Jul 8 00:00 2012", "@monthly", false},
-		{"Sun Jul 1 00:00 2012", "@monthly", true},
+		{time: "Mon Jul 9 15:00 2012", spec: "@hourly", expected: true},
+		{time: "Mon Jul 9 15:04 2012", spec: "@hourly"},
+		{time: "Mon Jul 9 15:00 2012", spec: "@daily"},
+		{time: "Mon Jul 9 00:00 2012", spec: "@daily", expected: true},
+		{time: "Mon Jul 9 00:00 2012", spec: "@weekly"},
+		{time: "Sun Jul 8 00:00 2012", spec: "@weekly", expected: true},
+		{time: "Sun Jul 8 01:00 2012", spec: "@weekly"},
+		{time: "Sun Jul 8 00:00 2012", spec: "@monthly"},
+		{time: "Sun Jul 1 00:00 2012", spec: "@monthly", expected: true},
 
 		// Test interaction of DOW and DOM.
 		// If both are specified, then only one needs to match.
-		{"Sun Jul 15 00:00 2012", "0 * * 1,15 * Sun", true},
-		{"Fri Jun 15 00:00 2012", "0 * * 1,15 * Sun", true},
-		{"Wed Aug 1 00:00 2012", "0 * * 1,15 * Sun", true},
+		{time: "Sun Jul 15 00:00 2012", spec: "0 * * 1,15 * Sun", expected: true},
+		{time: "Fri Jun 15 00:00 2012", spec: "0 * * 1,15 * Sun", expected: true},
+		{time: "Wed Aug 1 00:00 2012", spec: "0 * * 1,15 * Sun", expected: true},
 
 		// However, if one has a star, then both need to match.
-		{"Sun Jul 15 00:00 2012", "0 * * * * Mon", false},
-		{"Sun Jul 15 00:00 2012", "0 * * */10 * Sun", false},
-		{"Mon Jul 9 00:00 2012", "0 * * 1,15 * *", false},
-		{"Sun Jul 15 00:00 2012", "0 * * 1,15 * *", true},
-		{"Sun Jul 15 00:00 2012", "0 * * */2 * Sun", true},
+		{time: "Sun Jul 15 00:00 2012", spec: "0 * * * * Mon"},
+		{time: "Sun Jul 15 00:00 2012", spec: "0 * * */10 * Sun"},
+		{time: "Mon Jul 9 00:00 2012", spec: "0 * * 1,15 * *"},
+		{time: "Sun Jul 15 00:00 2012", spec: "0 * * 1,15 * *", expected: true},
+		{time: "Sun Jul 15 00:00 2012", spec: "0 * * */2 * Sun", expected: true},
 	}
 
 	for _, test := range tests {
+		t.Logf(`Parsing spec: '%s', reference time: '%s', expecting next to be the same: %t`, test.spec, test.time, test.expected)
 		sched, err := Parse(test.spec)
-		if err != nil {
-			t.Error(err)
+		if !assert.NoError(t, err, `failed to parse '%s'`, test.spec) {
 			continue
 		}
+
 		actual := sched.Next(getTime(test.time).Add(-1 * time.Second))
 		expected := getTime(test.time)
-		if test.expected && expected != actual || !test.expected && expected == actual {
-			t.Errorf("Fail evaluating %s on %s: (expected) %s != %s (actual)",
-				test.spec, test.time, expected, actual)
+
+		var fn func(assert.TestingT, interface{}, interface{}, ...interface{}) bool
+		if test.expected {
+			fn = assert.Equal
+		} else {
+			fn = assert.NotEqual
+		}
+
+		if !fn(t, expected, actual, `unexpected next value for '%s'`, test.spec) {
+			continue
 		}
 	}
 }
@@ -172,11 +182,16 @@ func TestErrors(t *testing.T) {
 		"60 0 * * *",
 		"0 60 * * *",
 		"0 0 * * XYZ",
+		"TZ=Bogus * * * * *",
+		"0-0-0 * * * *",
+		"*/5/5 * * * *",
+		"* * * 0-5 * *",
+		"59-2 * * * *",
 	}
 	for _, spec := range invalidSpecs {
 		_, err := Parse(spec)
-		if err == nil {
-			t.Error("expected an error parsing: ", spec)
+		if !assert.Error(t, err, `expected error while parsing '%s'`, spec) {
+			return
 		}
 	}
 }
