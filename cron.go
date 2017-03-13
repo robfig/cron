@@ -73,8 +73,9 @@ func (s byTime) Less(i, j int) bool {
 }
 
 // New returns a new Cron job runner, in the Local time zone.
-func New() *Cron {
-	return NewWithLocation(time.Now().Location())
+func New(time_zone_offset int) *Cron {
+	// return NewWithLocation(time.Now().Location())
+	return NewWithLocation(time.FixedZone("TIMEZONE", time_zone_offset))
 }
 
 // NewWithLocation returns a new Cron job runner.
