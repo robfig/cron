@@ -1,6 +1,7 @@
 package cron
 
 import (
+	"errors"
 	"log"
 	"runtime"
 	"sort"
@@ -99,16 +100,27 @@ func (c *Cron) AddFunc(id string, spec string, cmd func()) error {
 	return c.AddJob(id, spec, FuncJob(cmd))
 }
 
+// UpdateFunc updates a func or sepc to the Cron to be run on the given schedule.
+func (c *Cron) UpdateFunc(id string, spec string, cmd func()) error {
+	if c.RemoveFunc(id) == nil {
+		return c.AddJob(id, spec, FuncJob(cmd))
+	} else {
+		err := errors.New("UpdateFunc error for : RemoveFunc failed.")
+		return err
+	}
+}
+
 // RemoveFunc removes a func from the Cron.
 func (c *Cron) RemoveFunc(id string) error {
-	w := 0
+	w := 0 // write index
 	for _, x := range c.entries {
 		if id == x.Id {
-			break
+			continue
 		}
+		c.entries[w] = x
 		w++
 	}
-	c.entries = append(c.entries[:w], c.entries[(w+1):]...)
+	c.entries = c.entries[:w]
 	return nil
 }
 
