@@ -57,3 +57,9 @@ type Entry struct {
 // byTime is a wrapper for sorting the entry array by time
 // (with zero time at the end).
 type byTime []*Entry
+
+// constantDelay represents a simple recurring duty cycle, e.g. "Every 5 minutes".
+// It does not support jobs more frequent than once a second.
+type constantDelay struct {
+	delay time.Duration
+}

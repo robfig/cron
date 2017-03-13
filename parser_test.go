@@ -119,7 +119,7 @@ func TestParseSchedule(t *testing.T) {
 		{"TZ=UTC  0 5 * * * *", every5min(time.UTC)},
 		{"TZ=UTC  5 * * * *", every5min(time.UTC)},
 		{"TZ=Asia/Tokyo 0 5 * * * *", every5min(tokyo)},
-		{"@every 5m", ConstantDelaySchedule{5 * time.Minute}},
+		{"@every 5m", Every(5 * time.Minute)},
 		{"@midnight", midnight(time.Local)},
 		{"TZ=UTC  @midnight", midnight(time.UTC)},
 		{"TZ=Asia/Tokyo @midnight", midnight(tokyo)},

@@ -6,6 +6,24 @@ import (
 	"github.com/pkg/errors"
 )
 
+// Every returns a crontab Schedule that activates once every duration.
+// Delays of less than a second are not supported (will round up to 1 second).
+// Any fields less than a Second are truncated.
+func Every(duration time.Duration) constantDelay {
+	if duration < time.Second {
+		duration = time.Second
+	}
+
+	return constantDelay{
+		delay: duration - time.Duration(duration.Nanoseconds())%time.Second,
+	}
+}
+
+// Next returns the next time this should be run.
+// This rounds so that the next activation time will be on the second.
+func (schedule constantDelay) Next(t time.Time) time.Time {
+	return t.Add(schedule.delay - time.Duration(t.Nanosecond())*time.Nanosecond)
+}
 // SpecSchedule specifies a duty cycle (to the second granularity), based on a
 // traditional crontab specification. It is computed initially and stored as bit sets.
 type SpecSchedule struct {
