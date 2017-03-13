@@ -1,13 +1,63 @@
 package cron
 
 import (
-	"fmt"
-	"log"
 	"math"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/pkg/errors"
 )
+
+type parseCtx struct {
+	s   string
+	loc *time.Location
+}
+
+func parseTZ(ctx *parseCtx) error {
+	const tzprefix = `TZ=`
+	if !strings.HasPrefix(ctx.s, tzprefix) {
+		return nil
+	}
+
+	ctx.s = ctx.s[3:]
+	// peek until we find something other than a whitespace
+	var i int
+	for s := ctx.s; ; {
+		r, w := utf8.DecodeRuneInString(s)
+		if r == utf8.RuneError {
+			return errors.Errorf(`failed to parse rune: %s`, ctx.s)
+		}
+		if unicode.IsSpace(r) {
+			break
+		}
+		s = s[w:]
+		i += w
+	}
+
+	loc, err := time.LoadLocation(ctx.s[0:i])
+	if err != nil {
+		return errors.Wrapf(err, `provided bad location %s`, ctx.s[0:i])
+	}
+
+	for s := ctx.s[i:]; ; {
+		r, w := utf8.DecodeRuneInString(s)
+		if r == utf8.RuneError {
+			return errors.Errorf(`failed to parse rune: %s`, ctx.s)
+		}
+		if !unicode.IsSpace(r) {
+			break
+		}
+		s = s[w:]
+		i += w
+	}
+
+	ctx.s = ctx.s[i:]
+	ctx.loc = loc
+	return nil
+}
 
 // Parse returns a new crontab schedule representing the given spec.
 // It returns a descriptive error if the spec is not valid.
@@ -16,33 +66,27 @@ import (
 //   - Full crontab specs, e.g. "* * * * * ?"
 //   - Descriptors, e.g. "@midnight", "@every 1h30m"
 func Parse(spec string) (_ Schedule, err error) {
-	// Convert panics into errors
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			err = fmt.Errorf("%v", recovered)
-		}
-	}()
+	var p parseCtx
+	p.s = spec
+	p.loc = time.Local
 
-	// Extract timezone if present
-	var loc = time.Local
-	if strings.HasPrefix(spec, "TZ=") {
-		i := strings.Index(spec, " ")
-		if loc, err = time.LoadLocation(spec[3:i]); err != nil {
-			log.Panicf("Provided bad location %s: %v", spec[3:i], err)
-		}
-		spec = strings.TrimSpace(spec[i:])
+	if err := parseTZ(&p); err != nil {
+		return nil, errors.Wrap(err, `failed to parse timezone`)
 	}
 
 	// Handle named schedules (descriptors)
-	if strings.HasPrefix(spec, "@") {
-		return parseDescriptor(spec, loc), nil
+	const descriptorPrefix = `@`
+	if strings.HasPrefix(p.s, descriptorPrefix) {
+		return parseDescriptor(&p)
 	}
 
 	// Split on whitespace.  We require 5 or 6 fields.
 	// (second, optional) (minute) (hour) (day of month) (month) (day of week)
-	fields := strings.Fields(spec)
-	if len(fields) != 5 && len(fields) != 6 {
-		log.Panicf("Expected 5 or 6 fields, found %d: %s", len(fields), spec)
+	fields := strings.Fields(p.s)
+	switch l := len(fields); l {
+	case 5, 6:
+	default:
+		return nil, errors.Errorf("expected 5 or 6 fields, found %d: %s", l, p.s)
 	}
 
 	// Add 0 for second field if necessary.
@@ -50,34 +94,48 @@ func Parse(spec string) (_ Schedule, err error) {
 		fields = append([]string{"0"}, fields...)
 	}
 
-	schedule := &SpecSchedule{
-		Second:   getField(fields[0], seconds),
-		Minute:   getField(fields[1], minutes),
-		Hour:     getField(fields[2], hours),
-		Dom:      getField(fields[3], dom),
-		Month:    getField(fields[4], months),
-		Dow:      getField(fields[5], dow),
-		Location: loc,
+	var schedule crontabSpec
+	schedule.location = p.loc
+
+	getf := func(sched *crontabSpec, name, s string, r bounds) error {
+		f, err := getField(s, r)
+		if err != nil {
+			return errors.Wrapf(err, `invalid value for %s`, name)
+		}
+		return errors.Wrapf(sched.set(name, f), `failed to set field %s`, name)
 	}
 
-	return schedule, nil
+	boundsList := []bounds{seconds, minutes, hours, dom, months, dow}
+	fieldNames := []string{"seconds", "minutes", "hours", "dom", "month", "dow"}
+	for i, b := range boundsList {
+		if err := getf(&schedule, fieldNames[i], fields[i], b); err != nil {
+			return nil, err
+		}
+	}
+
+	return &schedule, nil
 }
 
 // getField returns an Int with the bits set representing all of the times that
 // the field represents.  A "field" is a comma-separated list of "ranges".
-func getField(field string, r bounds) uint64 {
+func getField(field string, r bounds) (uint64, error) {
 	// list = range {"," range}
 	var bits uint64
 	ranges := strings.FieldsFunc(field, func(r rune) bool { return r == ',' })
 	for _, expr := range ranges {
-		bits |= getRange(expr, r)
+		computed, err := getRange(expr, r)
+		if err != nil {
+			return 0, errors.Wrapf(err, `failed to compute range from '%s'`, field)
+		}
+
+		bits |= computed
 	}
-	return bits
+	return bits, nil
 }
 
 // getRange returns the bits indicated by the given expression:
 //   number | number "-" number [ "/" number ]
-func getRange(expr string, r bounds) uint64 {
+func getRange(expr string, r bounds) (uint64, error) {
 	var (
 		start, end, step uint
 		rangeAndStep     = strings.Split(expr, "/")
@@ -90,14 +148,22 @@ func getRange(expr string, r bounds) uint64 {
 		end = r.max
 		extraStar = starBit
 	} else {
-		start = parseIntOrName(lowAndHigh[0], r.names)
+		var err error
+		start, err = parseIntOrName(lowAndHigh[0], r.names)
+		if err != nil {
+			return 0, errors.Wrap(err, `failed to parse range start`)
+		}
+
 		switch len(lowAndHigh) {
 		case 1:
 			end = start
 		case 2:
-			end = parseIntOrName(lowAndHigh[1], r.names)
+			end, err = parseIntOrName(lowAndHigh[1], r.names)
+			if err != nil {
+				return 0, errors.Wrap(err, `failed to parse range end`)
+			}
 		default:
-			log.Panicf("Too many hyphens: %s", expr)
+			return 0, errors.Errorf(`too many hyphens: '%s'`, expr)
 		}
 	}
 
@@ -105,50 +171,54 @@ func getRange(expr string, r bounds) uint64 {
 	case 1:
 		step = 1
 	case 2:
-		step = mustParseInt(rangeAndStep[1])
+		var err error
+		step, err = mustParseInt(rangeAndStep[1])
+		if err != nil {
+			return 0, errors.Wrap(err, `faild to parse integer`)
+		}
 
 		// Special handling: "N/step" means "N-max/step".
 		if singleDigit {
 			end = r.max
 		}
 	default:
-		log.Panicf("Too many slashes: %s", expr)
+		return 0, errors.Errorf("too many slashes: %s", expr)
 	}
 
 	if start < r.min {
-		log.Panicf("Beginning of range (%d) below minimum (%d): %s", start, r.min, expr)
+		return 0, errors.Errorf("beginning of range (%d) below minimum (%d): %s", start, r.min, expr)
 	}
 	if end > r.max {
-		log.Panicf("End of range (%d) above maximum (%d): %s", end, r.max, expr)
+		return 0, errors.Errorf("end of range (%d) above maximum (%d): %s", end, r.max, expr)
 	}
 	if start > end {
-		log.Panicf("Beginning of range (%d) beyond end of range (%d): %s", start, end, expr)
+		return 0, errors.Errorf("beginning of range (%d) beyond end of range (%d): %s", start, end, expr)
 	}
 
-	return getBits(start, end, step) | extraStar
+	return getBits(start, end, step) | extraStar, nil
 }
 
 // parseIntOrName returns the (possibly-named) integer contained in expr.
-func parseIntOrName(expr string, names map[string]uint) uint {
+func parseIntOrName(expr string, names map[string]uint) (uint, error) {
 	if names != nil {
 		if namedInt, ok := names[strings.ToLower(expr)]; ok {
-			return namedInt
+			return namedInt, nil
 		}
 	}
 	return mustParseInt(expr)
 }
 
-// mustParseInt parses the given expression as an int or panics.
-func mustParseInt(expr string) uint {
+// mustParseInt parses the given expression as an int
+func mustParseInt(expr string) (uint, error) {
 	num, err := strconv.Atoi(expr)
 	if err != nil {
-		log.Panicf("Failed to parse int from %s: %s", expr, err)
+		return 0, errors.Wrapf(err, `failed to parse int from %s`, expr)
 	}
 	if num < 0 {
-		log.Panicf("Negative number (%d) not allowed: %s", num, expr)
+		return 0, errors.Wrapf(err, `negative number (%d) not allowed`, num)
 	}
 
-	return uint(num)
+	return uint(num), nil
 }
 
 // getBits sets all bits in the range [min, max], modulo the given step size.
@@ -172,75 +242,45 @@ func all(r bounds) uint64 {
 	return getBits(r.min, r.max, 1) | starBit
 }
 
-// parseDescriptor returns a pre-defined schedule for the expression, or panics
-// if none matches.
-func parseDescriptor(spec string, loc *time.Location) Schedule {
-	switch spec {
-	case "@yearly", "@annually":
-		return &SpecSchedule{
-			Second:   1 << seconds.min,
-			Minute:   1 << minutes.min,
-			Hour:     1 << hours.min,
-			Dom:      1 << dom.min,
-			Month:    1 << months.min,
-			Dow:      all(dow),
-			Location: loc,
-		}
-
-	case "@monthly":
-		return &SpecSchedule{
-			Second:   1 << seconds.min,
-			Minute:   1 << minutes.min,
-			Hour:     1 << hours.min,
-			Dom:      1 << dom.min,
-			Month:    all(months),
-			Dow:      all(dow),
-			Location: loc,
-		}
-
-	case "@weekly":
-		return &SpecSchedule{
-			Second:   1 << seconds.min,
-			Minute:   1 << minutes.min,
-			Hour:     1 << hours.min,
-			Dom:      all(dom),
-			Month:    all(months),
-			Dow:      1 << dow.min,
-			Location: loc,
-		}
-
-	case "@daily", "@midnight":
-		return &SpecSchedule{
-			Second:   1 << seconds.min,
-			Minute:   1 << minutes.min,
-			Hour:     1 << hours.min,
-			Dom:      all(dom),
-			Month:    all(months),
-			Dow:      all(dow),
-			Location: loc,
-		}
-
-	case "@hourly":
-		return &SpecSchedule{
-			Second:   1 << seconds.min,
-			Minute:   1 << minutes.min,
-			Hour:     all(hours),
-			Dom:      all(dom),
-			Month:    all(months),
-			Dow:      all(dow),
-			Location: loc,
-		}
-	}
-
+// parseDescriptor returns a pre-defined schedule for the expression
+func parseDescriptor(p *parseCtx) (Schedule, error) {
 	const every = "@every "
-	if strings.HasPrefix(spec, every) {
-		duration, err := time.ParseDuration(spec[len(every):])
+	if strings.HasPrefix(p.s, every) {
+		duration, err := time.ParseDuration(p.s[len(every):])
 		if err != nil {
-			log.Panicf("Failed to parse duration %s: %s", spec, err)
+			return nil, errors.Wrapf(err, "failed to parse duration '%s'", p.s)
 		}
-		return Every(duration)
+		return Every(duration), nil
 	}
 
-	log.Panicf("Unrecognized descriptor: %s", spec)
-	return nil
+	var sched crontabSpec
+	sched.second = 1 << seconds.min
+	sched.minute = 1 << minutes.min
+	sched.hour = 1 << hours.min
+	sched.dom = 1 << dom.min
+	sched.month = 1 << months.min
+	sched.dow = 1 << dow.min
+	sched.location = p.loc
+	switch p.s {
+	case "@yearly", "@annually":
+		sched.dow = all(dow)
+	case "@monthly":
+		sched.month = all(months)
+		sched.dow = all(dow)
+	case "@weekly":
+		sched.dom = all(dom)
+		sched.month = all(months)
+	case "@daily", "@midnight":
+		sched.dom = all(dom)
+		sched.month = all(months)
+		sched.dow = all(dow)
+	case "@hourly":
+		sched.hour = all(hours)
+		sched.dom = all(dom)
+		sched.month = all(months)
+		sched.dow = all(dow)
+	default:
+		return nil, errors.Errorf("unrecognized descriptor: %s", p.s)
+	}
+	return &sched, nil
 }

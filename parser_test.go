@@ -29,9 +29,15 @@ func TestRange(t *testing.T) {
 	}
 
 	for _, c := range ranges {
-		actual := getRange(c.expr, bounds{c.min, c.max, nil})
+		actual, err := getRange(c.expr, bounds{c.min, c.max, nil})
+		if err != nil {
+			t.Errorf("error: %s", err)
+			return
+		}
+
 		if actual != c.expected {
 			t.Errorf("%s => (expected) %d != %d (actual)", c.expr, c.expected, actual)
+			return
 		}
 	}
 }
@@ -49,9 +55,15 @@ func TestField(t *testing.T) {
 	}
 
 	for _, c := range fields {
-		actual := getField(c.expr, bounds{c.min, c.max, nil})
+		actual, err := getField(c.expr, bounds{c.min, c.max, nil})
+		if err != nil {
+			t.Errorf("error: %s", err)
+			return
+		}
+
 		if actual != c.expected {
 			t.Errorf("%s => (expected) %d != %d (actual)", c.expr, c.expected, actual)
+			return
 		}
 	}
 }
@@ -107,7 +119,7 @@ func TestParseSchedule(t *testing.T) {
 		{"TZ=UTC  0 5 * * * *", every5min(time.UTC)},
 		{"TZ=UTC  5 * * * *", every5min(time.UTC)},
 		{"TZ=Asia/Tokyo 0 5 * * * *", every5min(tokyo)},
-		{"@every 5m", ConstantDelaySchedule{5 * time.Minute}},
+		{"@every 5m", Every(5 * time.Minute)},
 		{"@midnight", midnight(time.Local)},
 		{"TZ=UTC  @midnight", midnight(time.UTC)},
 		{"TZ=Asia/Tokyo @midnight", midnight(tokyo)},
@@ -124,10 +136,10 @@ func TestParseSchedule(t *testing.T) {
 	}
 }
 
-func every5min(loc *time.Location) *SpecSchedule {
-	return &SpecSchedule{1 << 0, 1 << 5, all(hours), all(dom), all(months), all(dow), loc}
+func every5min(loc *time.Location) *crontabSpec {
+	return &crontabSpec{1 << 0, 1 << 5, all(hours), all(dom), all(months), all(dow), loc}
 }
 
-func midnight(loc *time.Location) *SpecSchedule {
-	return &SpecSchedule{1, 1, 1, all(dom), all(months), all(dow), loc}
+func midnight(loc *time.Location) *crontabSpec {
+	return &crontabSpec{1, 1, 1, all(dom), all(months), all(dow), loc}
 }
