@@ -13,7 +13,7 @@ type Cron struct {
 	ctx      context.Context
 	entries  *entryList
 	idgen    chan EntryID
-	add      chan *Entry
+	add      chan Entry
 	mu       sync.RWMutex
 	remove   chan EntryID
 	snapshot chan []Entry
@@ -35,28 +35,35 @@ type Schedule interface {
 type EntryID int
 
 // Entry consists of a schedule and the func to execute on that schedule.
-type Entry struct {
+type Entry interface {
+	ComputeNext(time.Time)
+	ID() EntryID
+	Next() time.Time
+	Run(context.Context)
+}
+
+type entry struct {
 	// ID is the cron-assigned ID of this entry, which may be used to look up a
 	// snapshot or remove it.
-	ID EntryID
+	id EntryID
 
 	// Schedule on which this job should be run.
-	Schedule Schedule
+	schedule Schedule
 
-	// Next time the job will run, or the zero time if Cron has not been
+	// next time the job will run, or the zero time if Cron has not been
 	// started or this entry's schedule is unsatisfiable
-	Next time.Time
+	next time.Time
 
 	// Prev is the last time this job was run, or the zero time if never.
-	Prev time.Time
+	prev time.Time
 
 	// Job is the thing to run when the Schedule is activated.
-	Job Job
+	job Job
 }
 
 // byTime is a wrapper for sorting the entry array by time
 // (with zero time at the end).
-type byTime []*Entry
+type byTime []Entry
 
 // constantDelay represents a simple recurring duty cycle, e.g. "Every 5 minutes".
 // It does not support jobs more frequent than once a second.

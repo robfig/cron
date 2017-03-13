@@ -8,7 +8,18 @@ import (
 	"time"
 )
 
-func (e Entry) Valid() bool { return e.ID != 0 }
+func (e *entry) ID() EntryID {
+	return e.id
+}
+func (e *entry) Next() time.Time {
+	return e.next
+}
+func (e *entry) ComputeNext(t time.Time) {
+	e.next = e.schedule.Next(time.Now())
+}
+func (e *entry) Run(ctx context.Context) {
+	e.job.Run(ctx)
+}
 
 func (s byTime) Len() int      { return len(s) }
 func (s byTime) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
@@ -16,35 +27,37 @@ func (s byTime) Less(i, j int) bool {
 	// Two zero times should return false.
 	// Otherwise, zero is "greater" than any other time.
 	// (To sort it at the end of the list.)
-	if s[i].Next.IsZero() {
+	nextI := s[i].Next()
+	nextJ := s[j].Next()
+	if nextI.IsZero() {
 		return false
 	}
-	if s[j].Next.IsZero() {
+	if nextJ.IsZero() {
 		return true
 	}
-	return s[i].Next.Before(s[j].Next)
+	return nextI.Before(nextJ)
 }
 
 type entryList struct {
-	add           chan *Entry
+	add           chan Entry
 	ctx           context.Context
 	changed       bool
 	changedCond   *sync.Cond
 	changedCondMu *sync.Mutex
-	entries       []*Entry
+	entries       []Entry
 	remove        chan EntryID
-	snapshot      chan chan []*Entry
+	snapshot      chan chan []Entry
 }
 
 func newEntryList(ctx context.Context) *entryList {
 	mu := &sync.Mutex{}
 	l := &entryList{
-		add:           make(chan *Entry),
+		add:           make(chan Entry),
 		changedCond:   sync.NewCond(mu),
 		changedCondMu: mu,
 		ctx:           ctx,
 		remove:        make(chan EntryID),
-		snapshot:      make(chan (chan []*Entry)),
+		snapshot:      make(chan (chan []Entry)),
 	}
 	go l.Run()
 	return l
@@ -60,7 +73,7 @@ func (l *entryList) Changed() bool {
 	return true
 }
 
-func (l *entryList) Add(e *Entry) {
+func (l *entryList) Add(e Entry) {
 	select {
 	case <-l.ctx.Done():
 		return
@@ -76,8 +89,8 @@ func (l *entryList) Remove(id EntryID) {
 	}
 }
 
-func (l *entryList) Snapshot() []*Entry {
-	ch := make(chan []*Entry)
+func (l *entryList) Snapshot() []Entry {
+	ch := make(chan []Entry)
 
 	select {
 	case <-l.ctx.Done():
@@ -103,15 +116,15 @@ func (l *entryList) Run() {
 			return
 		case e := <-l.add:
 			l.entries = append(l.entries, e)
-			e.Next = e.Schedule.Next(time.Now())
+			e.ComputeNext(time.Now())
 			l.changedCondMu.Lock()
 			l.changed = true
 			l.changedCond.Broadcast()
 			l.changedCondMu.Unlock()
 		case id := <-l.remove:
 			for i, e := range l.entries {
-				if id == e.ID {
-					l.entries = append(append([]*Entry(nil), l.entries[:i]...), l.entries[i+1:]...)
+				if id == e.ID() {
+					l.entries = append(append([]Entry(nil), l.entries[:i]...), l.entries[i+1:]...)
 					break
 				}
 			}
@@ -120,7 +133,7 @@ func (l *entryList) Run() {
 			l.changedCond.Broadcast()
 			l.changedCondMu.Unlock()
 		case ch := <-l.snapshot:
-			snapshot := make([]*Entry, len(l.entries))
+			snapshot := make([]Entry, len(l.entries))
 			for i, e := range l.entries {
 				snapshot[i] = e
 			}
@@ -140,7 +153,7 @@ func New(ctx context.Context) *Cron {
 		ctx:      ctx,
 		idgen:    newIDGen(ctx),
 		entries:  newEntryList(ctx),
-		add:      make(chan *Entry),
+		add:      make(chan Entry),
 		snapshot: make(chan []Entry),
 		remove:   make(chan EntryID),
 	}
@@ -168,13 +181,13 @@ func (c *Cron) AddJob(spec string, cmd Job) (EntryID, error) {
 // Schedule adds a Job to the Cron to be run on the given schedule.
 func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
 	nextID := <-c.idgen
-	entry := &Entry{
-		ID:       nextID,
-		Schedule: schedule,
-		Job:      cmd,
+	entry := &entry{
+		id:       nextID,
+		schedule: schedule,
+		job:      cmd,
 	}
 	c.entries.Add(entry)
-	return entry.ID
+	return entry.ID()
 }
 
 // Entries returns a snapshot of the cron entries.
@@ -185,7 +198,7 @@ func (c *Cron) Entries() []Entry {
 	}
 	ret := make([]Entry, len(l))
 	for i, e := range l {
-		ret[i] = *e
+		ret[i] = e
 	}
 	return ret
 }
@@ -193,11 +206,11 @@ func (c *Cron) Entries() []Entry {
 // Entry returns a snapshot of the given entry, or nil if it couldn't be found.
 func (c *Cron) Entry(id EntryID) Entry {
 	for _, entry := range c.Entries() {
-		if id == entry.ID {
+		if id == entry.ID() {
 			return entry
 		}
 	}
-	return Entry{}
+	return nil
 }
 
 // Remove an entry from being run in the future.
@@ -217,7 +230,7 @@ func (c *Cron) Run(ctx context.Context) {
 	// Figure out the next activation times for each entry.
 	now := time.Now().Local()
 	for _, entry := range c.entries.Snapshot() {
-		entry.Next = entry.Schedule.Next(now)
+		entry.ComputeNext(now)
 	}
 
 	for {
@@ -227,13 +240,13 @@ func (c *Cron) Run(ctx context.Context) {
 		sort.Sort(byTime(entries))
 
 		var effective time.Time
-		if len(entries) == 0 || entries[0].Next.IsZero() {
+		if len(entries) == 0 || entries[0].Next().IsZero() {
 			// If there are no entries yet, just sleep until there's
 			// a change in the entries list
 			c.entries.Changed()
 			continue
 		} else {
-			effective = entries[0].Next
+			effective = entries[0].Next()
 		}
 
 		select {
@@ -242,12 +255,11 @@ func (c *Cron) Run(ctx context.Context) {
 		case now = <-time.After(effective.Sub(now)):
 			// Run every entry whose next time was this effective time.
 			for _, e := range entries {
-				if e.Next != effective {
+				if e.Next() != effective {
 					break
 				}
-				go e.Job.Run(ctx)
-				e.Prev = e.Next
-				e.Next = e.Schedule.Next(effective)
+				go e.Run(ctx)
+				e.ComputeNext(effective)
 			}
 			continue
 		}
