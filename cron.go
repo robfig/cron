@@ -1,5 +1,4 @@
-// Package cron implements a cron spec parser and runner.
-package cron // import "github.com/lestrrat/cron"
+package cron
 
 import (
 	"context"
@@ -218,6 +217,8 @@ func (c *Cron) Remove(id EntryID) {
 	c.entries.Remove(id)
 }
 
+// Run starts the cron dispatcher. Cancel the given context
+// object when you want to stop the dispatcher.
 func (c *Cron) Run(ctx context.Context) {
 	var cancel func()
 	if ctx == nil {
