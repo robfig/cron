@@ -191,6 +191,25 @@ func (c *Cron) run() {
 		select {
 		case now = <-timer.C:
 			now = now.In(c.location)
+
+			// The following two ifs are there to prevent duplicate
+			// job invocation if sleep wakes early whilst preserving
+			// the behaviour to reschedule from now which is problematic
+			// if a machine goes to sleep
+			if abs(effective.Sub(now)) < 500 * time.Millisecond {
+				// If the time is triggered within 0.5 second either before
+				// or after - we accept the effective time as now
+				// for the purposes of computing the next run
+				now = effective.In(c.location)
+			}
+			if now.Before(effective) {
+				// If now is before the expected time wait some more
+				// Sleep for 0.5 seconds to ensure this does not spin in case
+				// the sleep keeps occuring
+				time.Sleep(500 * time.Millisecond)
+				continue
+			}
+
 			// Run every entry whose next time was this effective time.
 			for _, e := range c.entries {
 				if e.Next != effective {
@@ -217,6 +236,14 @@ func (c *Cron) run() {
 		// 'now' should be updated after newEntry and snapshot cases.
 		now = time.Now().In(c.location)
 		timer.Stop()
+	}
+}
+
+func abs(x time.Duration) time.Duration {
+	if x > 0 {
+		return x
+	} else {
+		return -x
 	}
 }
 
