@@ -4,6 +4,7 @@ import (
 	"log"
 	"runtime"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -18,6 +19,7 @@ type Cron struct {
 	running  bool
 	ErrorLog *log.Logger
 	location *time.Location
+	wg       sync.WaitGroup
 }
 
 // Job is an interface for submitted cron jobs.
@@ -196,7 +198,11 @@ func (c *Cron) run() {
 					if e.Next.After(now) || e.Next.IsZero() {
 						break
 					}
-					go c.runWithRecovery(e.Job)
+					c.wg.Add(1)
+					go func(job Job) {
+						c.runWithRecovery(job)
+						c.wg.Done()
+					}(e.Job)
 					e.Prev = e.Next
 					e.Next = e.Schedule.Next(now)
 				}
@@ -237,6 +243,12 @@ func (c *Cron) Stop() {
 	}
 	c.stop <- struct{}{}
 	c.running = false
+}
+
+// Wait waits for all running jobs to finish. It may only be called after
+// calling Stop() as no new jobs may start while waiting.
+func (c *Cron) Wait() {
+	c.wg.Wait()
 }
 
 // entrySnapshot returns a copy of the current cron entry list.
