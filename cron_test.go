@@ -316,6 +316,26 @@ func TestJob(t *testing.T) {
 	}
 }
 
+type ZeroSchedule struct{}
+
+func (*ZeroSchedule) Next(time.Time) time.Time {
+	return time.Time{}
+}
+
+// Tests that job without time does not run
+func TestJobWithZeroTimeDoesNotRun(t *testing.T) {
+	cron := New()
+	calls := 0
+	cron.AddFunc("* * * * * *", func() { calls += 1 })
+	cron.Schedule(new(ZeroSchedule), FuncJob(func() { t.Error("expected zero task will not run") }))
+	cron.Start()
+	defer cron.Stop()
+	<-time.After(OneSecond)
+	if calls != 1 {
+		t.Errorf("called %d times, expected 1\n", calls)
+	}
+}
+
 func wait(wg *sync.WaitGroup) chan bool {
 	ch := make(chan bool)
 	go func() {
