@@ -187,35 +187,37 @@ func (c *Cron) run() {
 			timer = time.NewTimer(c.entries[0].Next.Sub(now))
 		}
 
-		select {
-		case now = <-timer.C:
-			now = now.In(c.location)
-			// Run every entry whose next time was less than now
-			for _, e := range c.entries {
-				if e.Next.After(now) || e.Next.IsZero() {
-					break
+		for {
+			select {
+			case now = <-timer.C:
+				now = now.In(c.location)
+				// Run every entry whose next time was less than now
+				for _, e := range c.entries {
+					if e.Next.After(now) || e.Next.IsZero() {
+						break
+					}
+					go c.runWithRecovery(e.Job)
+					e.Prev = e.Next
+					e.Next = e.Schedule.Next(now)
 				}
-				go c.runWithRecovery(e.Job)
-				e.Prev = e.Next
-				e.Next = e.Schedule.Next(now)
+
+			case newEntry := <-c.add:
+				timer.Stop()
+				now = c.now()
+				newEntry.Next = newEntry.Schedule.Next(now)
+				c.entries = append(c.entries, newEntry)
+
+			case <-c.snapshot:
+				c.snapshot <- c.entrySnapshot()
+				continue
+
+			case <-c.stop:
+				timer.Stop()
+				return
 			}
-			continue
 
-		case newEntry := <-c.add:
-			c.entries = append(c.entries, newEntry)
-			newEntry.Next = newEntry.Schedule.Next(time.Now().In(c.location))
-
-		case <-c.snapshot:
-			c.snapshot <- c.entrySnapshot()
-
-		case <-c.stop:
-			timer.Stop()
-			return
+			break
 		}
-
-		// 'now' should be updated after newEntry and snapshot cases.
-		now = time.Now().In(c.location)
-		timer.Stop()
 	}
 }
 
