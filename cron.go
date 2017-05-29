@@ -193,6 +193,7 @@ func (c *Cron) run() {
 			continue
 
 		case newEntry := <-c.add:
+			now = time.Now().Local()
 			c.entries = append(c.entries, newEntry)
 			newEntry.Next = newEntry.Schedule.Next(now)
 
