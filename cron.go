@@ -1,6 +1,7 @@
 package cron
 
 import (
+	"errors"
 	"log"
 	"runtime"
 	"sort"
@@ -34,6 +35,9 @@ type Schedule interface {
 
 // Entry consists of a schedule and the func to execute on that schedule.
 type Entry struct {
+	// add a unique name for any entry
+	Id string
+
 	// The schedule on which this job should be run.
 	Schedule Schedule
 
@@ -69,8 +73,9 @@ func (s byTime) Less(i, j int) bool {
 }
 
 // New returns a new Cron job runner, in the Local time zone.
-func New() *Cron {
-	return NewWithLocation(time.Now().Location())
+func New(time_zone_offset int) *Cron {
+	// return NewWithLocation(time.Now().Location())
+	return NewWithLocation(time.FixedZone("TIMEZONE", time_zone_offset))
 }
 
 // NewWithLocation returns a new Cron job runner.
@@ -92,25 +97,50 @@ type FuncJob func()
 func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
-func (c *Cron) AddFunc(spec string, cmd func()) error {
-	return c.AddJob(spec, FuncJob(cmd))
+func (c *Cron) AddFunc(id string, spec string, cmd func()) error {
+	return c.AddJob(id, spec, FuncJob(cmd))
+}
+
+// UpdateFunc updates a func or sepc to the Cron to be run on the given schedule.
+func (c *Cron) UpdateFunc(id string, spec string, cmd func()) error {
+	if c.RemoveFunc(id) == nil {
+		return c.AddJob(id, spec, FuncJob(cmd))
+	} else {
+		err := errors.New("UpdateFunc error for : RemoveFunc failed.")
+		return err
+	}
+}
+
+// RemoveFunc removes a func from the Cron.
+func (c *Cron) RemoveFunc(id string) error {
+	w := 0 // write index
+	for _, x := range c.entries {
+		if id == x.Id {
+			continue
+		}
+		c.entries[w] = x
+		w++
+	}
+	c.entries = c.entries[:w]
+	return nil
 }
 
 // AddJob adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) AddJob(spec string, cmd Job) error {
+func (c *Cron) AddJob(id string, spec string, cmd Job) error {
 	schedule, err := Parse(spec)
 	if err != nil {
 		return err
 	}
-	c.Schedule(schedule, cmd)
+	c.Schedule(id, schedule, cmd)
 	return nil
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) Schedule(schedule Schedule, cmd Job) {
+func (c *Cron) Schedule(id string, schedule Schedule, cmd Job) {
 	entry := &Entry{
 		Schedule: schedule,
 		Job:      cmd,
+		Id:       id,
 	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
@@ -244,6 +274,7 @@ func (c *Cron) entrySnapshot() []*Entry {
 	entries := []*Entry{}
 	for _, e := range c.entries {
 		entries = append(entries, &Entry{
+			Id:       e.Id,
 			Schedule: e.Schedule,
 			Next:     e.Next,
 			Prev:     e.Prev,
