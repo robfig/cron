@@ -149,6 +149,25 @@ func TestSnapshotEntries(t *testing.T) {
 
 }
 
+// fixedTimeSchedule is a Schedule implementation that must be run at a
+// specific point in time.
+type fixedTimeSchedule time.Time
+
+func (fs fixedTimeSchedule) Next(t time.Time) time.Time {
+	return time.Time(fs)
+}
+
+// Test cleaning up of unsatisfiable entries.
+func TestCleanup(t *testing.T) {
+	cron := New()
+	cron.AddFunc("* * * * * *", func() {})
+	cron.Schedule(fixedTimeSchedule{}, FuncJob(func() {}))
+	cron.Cleanup()
+	if len(cron.Entries()) != 1 {
+		t.Error("Cleanup did not remove entry")
+	}
+}
+
 // Test that the entries are correctly sorted.
 // Add a bunch of long-in-the-future entries, and an immediate entry, and ensure
 // that the immediate entry runs immediately.

@@ -15,6 +15,7 @@ type Cron struct {
 	stop     chan struct{}
 	add      chan *Entry
 	snapshot chan []*Entry
+	cleanup  chan struct{}
 	running  bool
 	ErrorLog *log.Logger
 	location *time.Location
@@ -80,6 +81,7 @@ func NewWithLocation(location *time.Location) *Cron {
 		add:      make(chan *Entry),
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
+		cleanup:  make(chan struct{}),
 		running:  false,
 		ErrorLog: nil,
 		location: location,
@@ -112,8 +114,11 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) {
 		Schedule: schedule,
 		Job:      cmd,
 	}
+	entry.Next = entry.Schedule.Next(c.now())
 	if !c.running {
 		c.entries = append(c.entries, entry)
+		// Keep entries sorted by next running time
+		sort.Sort(byTime(c.entries))
 		return
 	}
 
@@ -128,6 +133,16 @@ func (c *Cron) Entries() []*Entry {
 		return x
 	}
 	return c.entrySnapshot()
+}
+
+// Cleanup removes all unsatisfiable cron entries.
+func (c *Cron) Cleanup() {
+	if !c.running {
+		c.removeUnsatisfiable()
+		return
+	}
+
+	c.cleanup <- struct{}{}
 }
 
 // Location gets the time zone location
@@ -211,6 +226,10 @@ func (c *Cron) run() {
 				c.snapshot <- c.entrySnapshot()
 				continue
 
+			case <-c.cleanup:
+				c.removeUnsatisfiable()
+				continue
+
 			case <-c.stop:
 				timer.Stop()
 				return
@@ -251,6 +270,16 @@ func (c *Cron) entrySnapshot() []*Entry {
 		})
 	}
 	return entries
+}
+
+// removeUnsatisfiable removes all unsatisfiable cron entries.
+func (c *Cron) removeUnsatisfiable() {
+	// Since cron entries are always sorted with zero-time at the end, we can
+	// simply delete the tail.
+	i := len(c.entries) - 1
+	for ; i >= 0 && c.entries[i].Next.IsZero(); i-- {
+	}
+	c.entries = c.entries[0 : i+1]
 }
 
 // now returns current time in c location
