@@ -279,6 +279,67 @@ func (t testJob) Run() {
 	t.wg.Done()
 }
 
+// Test that adding an invalid job spec returns an error
+func TestInvalidJobSpec(t *testing.T) {
+	cron := New()
+	err := cron.AddJob("this will not parse", nil)
+	if err == nil {
+		t.Errorf("expected an error with invalid spec, got nil")
+	}
+}
+
+// Test blocking run method behaves as Start()
+func TestBlockingRun(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	cron.AddFunc("* * * * * ?", func() { wg.Done() })
+
+	var unblockChan = make(chan struct{})
+
+	go func() {
+		cron.Run()
+		close(unblockChan)
+	}()
+	defer cron.Stop()
+
+	select {
+	case <-time.After(OneSecond):
+		t.Error("expected job fires")
+	case <-unblockChan:
+		t.Error("expected that Run() blocks")
+	case <-wait(wg):
+	}
+}
+
+// Test that double-running is a no-op
+func TestStartNoop(t *testing.T) {
+	var tickChan = make(chan struct{}, 2)
+
+	cron := New()
+	cron.AddFunc("* * * * * ?", func() {
+		tickChan <- struct{}{}
+	})
+
+	cron.Start()
+	defer cron.Stop()
+
+	// Wait for the first firing to ensure the runner is going
+	<-tickChan
+
+	cron.Start()
+
+	<-tickChan
+
+	// Fail if this job fires again in a short period, indicating a double-run
+	select {
+	case <-time.After(time.Millisecond):
+	case <-tickChan:
+		t.Error("expected job fires exactly twice")
+	}
+}
+
 // Simple test using Runnables.
 func TestJob(t *testing.T) {
 	wg := &sync.WaitGroup{}
