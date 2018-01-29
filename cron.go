@@ -1,9 +1,11 @@
 package cron
 
 import (
+	"fmt"
 	"log"
 	"runtime"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -15,9 +17,11 @@ type Cron struct {
 	stop     chan struct{}
 	add      chan *Entry
 	snapshot chan []*Entry
+	remove   chan string
 	running  bool
 	ErrorLog *log.Logger
 	location *time.Location
+	mux      *sync.RWMutex
 }
 
 // Job is an interface for submitted cron jobs.
@@ -47,6 +51,9 @@ type Entry struct {
 
 	// The Job to run.
 	Job Job
+
+	// The Job's name
+	Name string
 }
 
 // byTime is a wrapper for sorting the entry array by time
@@ -80,9 +87,11 @@ func NewWithLocation(location *time.Location) *Cron {
 		add:      make(chan *Entry),
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
+		remove:   make(chan string),
 		running:  false,
 		ErrorLog: nil,
 		location: location,
+		mux:      new(sync.RWMutex),
 	}
 }
 
@@ -92,27 +101,104 @@ type FuncJob func()
 func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
-func (c *Cron) AddFunc(spec string, cmd func()) error {
-	return c.AddJob(spec, FuncJob(cmd))
+func (c *Cron) AddFunc(spec string, cmd func(), names ...string) error {
+	var name string
+	if len(names) <= 0 {
+		name = fmt.Sprintf("%d", time.Now().Unix())
+	} else {
+		name = names[0]
+	}
+
+	return c.AddJob(spec, FuncJob(cmd), name)
+}
+
+// AddFunc adds a func to the Cron to be run on the given schedule.
+func (c *Cron) AddOnceFunc(spec string, cmd func(), names ...string) error {
+	var name string
+	if len(names) <= 0 {
+		name = fmt.Sprintf("%d", time.Now().Unix())
+	} else {
+		name = names[0]
+	}
+
+	// Support Once run function.
+	onceCmd := func() {
+		cmd()
+		c.Remove(name)
+	}
+
+	return c.AddJob(spec, FuncJob(onceCmd), name)
 }
 
 // AddJob adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) AddJob(spec string, cmd Job) error {
+func (c *Cron) AddJob(spec string, cmd Job, names ...string) error {
+	var name string
 	schedule, err := Parse(spec)
 	if err != nil {
 		return err
 	}
-	c.Schedule(schedule, cmd)
+	if len(names) <= 0 {
+		name = fmt.Sprintf("%d", time.Now().Unix())
+	} else {
+		name = names[0]
+	}
+
+	c.Schedule(schedule, cmd, name)
 	return nil
 }
 
+// Remove an entry from being run in the future.
+func (c *Cron) Remove(name string) error {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
+	if !c.running {
+		p := c.pos(name)
+		if p == -1 {
+			return fmt.Errorf("no entry name: %s", name)
+		}
+
+		c.entries = c.entries[:p+copy(c.entries[p:], c.entries[p+1:])]
+		return nil
+	}
+
+	c.remove <- name
+	return nil
+}
+
+// pos return index if name in the Cron entries else -1
+func (c *Cron) pos(name string) int {
+	for p, e := range c.entries {
+		if e.Name == name {
+			return p
+		}
+	}
+
+	return -1
+}
+
 // Schedule adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) Schedule(schedule Schedule, cmd Job) {
+func (c *Cron) Schedule(schedule Schedule, cmd Job, names ...string) {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+
+	var name string
+	if len(names) <= 0 {
+		name = fmt.Sprintf("%d", time.Now().Unix())
+	} else {
+		name = names[0]
+	}
 	entry := &Entry{
 		Schedule: schedule,
 		Job:      cmd,
+		Name:     name,
 	}
 	if !c.running {
+		p := c.pos(name)
+		if p != -1 {
+			fmt.Errorf("Duplicate names not allowed")
+		}
+
 		c.entries = append(c.entries, entry)
 		return
 	}
@@ -206,6 +292,14 @@ func (c *Cron) run() {
 				now = c.now()
 				newEntry.Next = newEntry.Schedule.Next(now)
 				c.entries = append(c.entries, newEntry)
+
+			case name := <-c.remove:
+				p := c.pos(name)
+				if p == -1 {
+					break
+				}
+
+				c.entries = c.entries[:p+copy(c.entries[p:], c.entries[p+1:])]
 
 			case <-c.snapshot:
 				c.snapshot <- c.entrySnapshot()

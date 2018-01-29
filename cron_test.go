@@ -124,6 +124,84 @@ func TestAddWhileRunningWithDelay(t *testing.T) {
 	}
 }
 
+// Add a job, start cron, remove the job, expect it to have not run
+func TestAddBeforeRunningThenRemoveWhileRunning(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	cron.AddFunc("* * * * * ?", func() { wg.Done() }, "test Remove when in running")
+
+	cron.Start()
+	defer cron.Stop()
+
+	cron.Remove("test Remove when in running")
+
+	select {
+	case <-time.After(OneSecond):
+	case <-wait(wg):
+		t.FailNow()
+	}
+}
+
+// Add a job, remove the job, start cron, expect it to have not run
+func TestAddBeforeRunningThenRemoveBeforeRunning(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	cron.AddFunc("* * * * * ?", func() { wg.Done() }, "test Remove when not in running")
+
+	cron.Remove("test Remove when not in running")
+	defer cron.Stop()
+
+	cron.Start()
+
+	select {
+	case <-time.After(OneSecond):
+	case <-wait(wg):
+		t.FailNow()
+	}
+}
+
+// Add a once job, start cron, expect it to run once.
+func TestAddOnceJobBeforeRunning(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	cron.AddOnceFunc("* * * * * ?", func() { wg.Done() }, "test AddOnceFunc when not in running")
+
+	defer cron.Stop()
+
+	cron.Start()
+
+	select {
+	case <-time.After(OneSecond):
+		t.Fatal("expected job runs")
+	case <-wait(wg):
+	}
+}
+
+// Add a once job, start cron, expect it to run once.
+func TestAddOnceJobAfterRunning(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	defer cron.Stop()
+
+	cron.Start()
+
+	cron.AddOnceFunc("* * * * * ?", func() { wg.Done() }, "test AddOnceFunc when in running")
+
+	select {
+	case <-time.After(OneSecond):
+		t.Fatal("expected job runs")
+	case <-wait(wg):
+	}
+}
+
 // Test timing with Entries.
 func TestSnapshotEntries(t *testing.T) {
 	wg := &sync.WaitGroup{}
