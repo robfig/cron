@@ -18,9 +18,9 @@ type Cron struct {
 	remove   chan EntryID
 	snapshot chan []*Entry
 	running  bool
-	ErrorLog *log.Logger
 	location *time.Location
 	nextID   EntryID
+	ErrorLog *log.Logger
 }
 
 // Job is an interface for submitted cron jobs.
@@ -30,7 +30,7 @@ type Job interface {
 
 // Schedule describes a job's duty cycle.
 type Schedule interface {
-	// Next returns the next activation time, later than the given time.
+	// Returns the next activation time, later than the given time.
 	// Next is invoked initially, and then each time the job is run.
 	Next(time.Time) time.Time
 }
@@ -162,15 +162,6 @@ func (c *Cron) Location() *time.Location {
 	return c.location
 }
 
-// Remove an entry from being run in the future.
-func (c *Cron) Remove(id EntryID) {
-	if c.running {
-		c.remove <- id
-	} else {
-		c.removeEntry(id)
-	}
-}
-
 // Start the cron scheduler in its own go-routine, or no-op if already started.
 func (c *Cron) Start() {
 	if c.running {
@@ -189,16 +180,22 @@ func (c *Cron) Run() {
 	c.run()
 }
 
-func (c *Cron) runWithRecovery(j Job) {
-	defer func() {
-		if r := recover(); r != nil {
-			const size = 64 << 10
-			buf := make([]byte, size)
-			buf = buf[:runtime.Stack(buf, false)]
-			c.logf("cron: panic running job: %v\n%s", r, buf)
-		}
-	}()
-	j.Run()
+// Stop stops the cron scheduler if it is running; otherwise it does nothing.
+func (c *Cron) Stop() {
+	if !c.running {
+		return
+	}
+	c.stop <- struct{}{}
+	c.running = false
+}
+
+// Remove an entry from being run in the future.
+func (c *Cron) Remove(id EntryID) {
+	if c.running {
+		c.remove <- id
+	} else {
+		c.removeEntry(id)
+	}
 }
 
 // Run the scheduler. this is private just due to the need to synchronize
@@ -260,22 +257,26 @@ func (c *Cron) run() {
 	}
 }
 
-// Logs an error to stderr or to the configured error log
-func (c *Cron) logf(format string, args ...interface{}) {
-	if c.ErrorLog != nil {
-		c.ErrorLog.Printf(format, args...)
-	} else {
-		log.Printf(format, args...)
-	}
+func (c *Cron) runWithRecovery(j Job) {
+	defer func() {
+		if r := recover(); r != nil {
+			const size = 64 << 10
+			buf := make([]byte, size)
+			buf = buf[:runtime.Stack(buf, false)]
+			c.logf("cron: panic running job: %v\n%s", r, buf)
+		}
+	}()
+	j.Run()
 }
 
-// Stop stops the cron scheduler if it is running; otherwise it does nothing.
-func (c *Cron) Stop() {
-	if !c.running {
-		return
+func (c *Cron) removeEntry(id EntryID) {
+	var entries []*Entry
+	for _, e := range c.entries {
+		if e.ID != id {
+			entries = append(entries, e)
+		}
 	}
-	c.stop <- struct{}{}
-	c.running = false
+	c.entries = entries
 }
 
 // entrySnapshot returns a copy of the current cron entry list.
@@ -292,17 +293,16 @@ func (c *Cron) entrySnapshot() []*Entry {
 	return entries
 }
 
+// Logs an error to stderr or to the configured error log
+func (c *Cron) logf(format string, args ...interface{}) {
+	if c.ErrorLog != nil {
+		c.ErrorLog.Printf(format, args...)
+	} else {
+		log.Printf(format, args...)
+	}
+}
+
 // now returns current time in c location
 func (c *Cron) now() time.Time {
 	return time.Now().In(c.location)
-}
-
-func (c *Cron) removeEntry(id EntryID) {
-	var entries []*Entry
-	for _, e := range c.entries {
-		if e.ID != id {
-			entries = append(entries, e)
-		}
-	}
-	c.entries = entries
 }

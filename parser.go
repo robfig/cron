@@ -79,6 +79,7 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 	if len(spec) == 0 {
 		return nil, fmt.Errorf("Empty spec string")
 	}
+
 	if spec[0] == '@' && p.options&Descriptor > 0 {
 		return parseDescriptor(spec)
 	}
@@ -107,12 +108,12 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 	fields = expandFields(fields, p.options)
 
 	var err error
+
 	field := func(field string, r bounds) uint64 {
+		bits, err := getField(field, r)
 		if err != nil {
 			return 0
 		}
-		var bits uint64
-		bits, err = getField(field, r)
 		return bits
 	}
 
@@ -124,6 +125,7 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		month      = field(fields[4], months)
 		dayofweek  = field(fields[5], dow)
 	)
+
 	if err != nil {
 		return nil, err
 	}
