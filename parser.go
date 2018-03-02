@@ -110,10 +110,13 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 	var err error
 
 	field := func(field string, r bounds) uint64 {
-		bits, err := getField(field, r)
 		if err != nil {
 			return 0
 		}
+
+		var bits uint64
+		bits, err = getField(field, r)
+
 		return bits
 	}
 

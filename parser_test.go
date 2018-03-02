@@ -184,6 +184,7 @@ func TestParse(t *testing.T) {
 	for _, c := range entries {
 		actual, err := Parse(c.expr)
 		if len(c.err) != 0 && (err == nil || !strings.Contains(err.Error(), c.err)) {
+			t.Log(err)
 			t.Errorf("%s => expected %v, got %v", c.expr, c.err, err)
 		}
 		if len(c.err) == 0 && err != nil {

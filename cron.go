@@ -56,6 +56,12 @@ type Entry struct {
 
 	// Job is the thing to run when the Schedule is activated.
 	Job Job
+
+	// Alias name to the job
+	Name string
+
+	// Spec is a string used to make a schedule
+	Spec string
 }
 
 // Valid returns true if this is not the zero entry.
@@ -111,23 +117,62 @@ func (c *Cron) AddFunc(spec string, cmd func()) (EntryID, error) {
 	return c.AddJob(spec, FuncJob(cmd))
 }
 
+// AddFuncN adds a func to the Cron to be run on the given schedule.
+func (c *Cron) AddFuncN(name, spec string, cmd func()) (EntryID, error) {
+	return c.AddJobN(name, spec, FuncJob(cmd))
+}
+
 // AddJob adds a Job to the Cron to be run on the given schedule.
 func (c *Cron) AddJob(spec string, cmd Job) (EntryID, error) {
 	schedule, err := Parse(spec)
 	if err != nil {
 		return 0, err
 	}
+
 	return c.Schedule(schedule, cmd), nil
+}
+
+// AddJobN adds a Job to the Cron to be run on the given schedule.
+func (c *Cron) AddJobN(name, spec string, cmd Job) (EntryID, error) {
+	schedule, err := Parse(spec)
+	if err != nil {
+		return 0, err
+	}
+
+	return c.ScheduleN(name, spec, schedule, cmd), nil
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
 func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
 	c.nextID++
+
 	entry := &Entry{
 		ID:       c.nextID,
 		Schedule: schedule,
 		Job:      cmd,
 	}
+
+	if !c.running {
+		c.entries = append(c.entries, entry)
+	} else {
+		c.add <- entry
+	}
+
+	return entry.ID
+}
+
+// ScheduleN adds a Job to the Cron to be run on the given schedule.
+func (c *Cron) ScheduleN(name, spec string, schedule Schedule, cmd Job) EntryID {
+	c.nextID++
+
+	entry := &Entry{
+		ID:       c.nextID,
+		Name:     name,
+		Spec:     spec,
+		Schedule: schedule,
+		Job:      cmd,
+	}
+
 	if !c.running {
 		c.entries = append(c.entries, entry)
 	} else {
@@ -151,6 +196,16 @@ func (c *Cron) Entries() []*Entry {
 func (c *Cron) Entry(id EntryID) Entry {
 	for _, entry := range c.Entries() {
 		if id == entry.ID {
+			return *entry
+		}
+	}
+	return Entry{}
+}
+
+// EntryName returns a snapshot of the given entry, or nil if it couldn't be found.
+func (c *Cron) EntryName(name string) Entry {
+	for _, entry := range c.Entries() {
+		if name == entry.Name {
 			return *entry
 		}
 	}
@@ -284,6 +339,9 @@ func (c *Cron) entrySnapshot() []*Entry {
 	entries := []*Entry{}
 	for _, e := range c.entries {
 		entries = append(entries, &Entry{
+			ID:       e.ID,
+			Name:     e.Name,
+			Spec:     e.Spec,
 			Schedule: e.Schedule,
 			Next:     e.Next,
 			Prev:     e.Prev,
