@@ -21,4 +21,6 @@ _testmain.go
 
 *.exe
 
+.DS_Store
 .vscode
+.idea
