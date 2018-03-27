@@ -19,13 +19,22 @@ func (ent entries) values() []*Entry {
 	return r
 }
 
+// command defines a command to be performed over the entries
+// there are only two available commands delete an entry or add and entry.
+// if the entry field is != nil the command is an addition, else the command is a
+// delete. If the command is a delete but the id is empty then nothing is performed.
+type command struct {
+	entry *Entry
+	id    string
+}
+
 // Cron keeps track of any number of entries, invoking the associated func as
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
 	entries  entries
 	stop     chan struct{}
-	add      chan *Entry
+	command  chan command
 	snapshot chan []*Entry
 	running  bool
 	ErrorLog *log.Logger
@@ -91,7 +100,7 @@ func New() *Cron {
 func NewWithLocation(location *time.Location) *Cron {
 	return &Cron{
 		entries:  map[string]*Entry{},
-		add:      make(chan *Entry),
+		command:  make(chan command),
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
 		running:  false,
@@ -138,8 +147,18 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job, ID string) {
 		c.entries[entry.ID] = entry
 		return
 	}
+	addCmd := command{
+		entry: entry,
+	}
+	c.command <- addCmd
+}
 
-	c.add <- entry
+// RemoveJob deletes an existing job, if the job does not exist does nothing.
+func (c *Cron) RemoveJob(id string) {
+	delCmd := command{
+		id: id,
+	}
+	c.command <- delCmd
 }
 
 // Entries returns a snapshot of the cron entries.
@@ -224,12 +243,19 @@ func (c *Cron) run() {
 					e.Next = e.Schedule.Next(now)
 				}
 
-			case newEntry := <-c.add:
-				timer.Stop()
-				now = c.now()
-				newEntry.Next = newEntry.Schedule.Next(now)
-				c.entries[newEntry.ID] = newEntry
+			case cmd := <-c.command:
+				if cmd.entry != nil {
+					newEntry := cmd.entry
+					timer.Stop()
+					now = c.now()
+					newEntry.Next = newEntry.Schedule.Next(now)
+					c.entries[newEntry.ID] = newEntry
 
+				} else {
+					if cmd.id != "" {
+						delete(c.entries, cmd.id)
+					}
+				}
 			case <-c.snapshot:
 				c.snapshot <- c.entrySnapshot()
 				continue
