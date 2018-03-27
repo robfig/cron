@@ -5,13 +5,25 @@ import (
 	"runtime"
 	"sort"
 	"time"
+
+	"github.com/google/uuid"
 )
+
+type entries map[string]*Entry
+
+func (ent entries) values() []*Entry {
+	r := []*Entry{}
+	for _, v := range ent {
+		r = append(r, v)
+	}
+	return r
+}
 
 // Cron keeps track of any number of entries, invoking the associated func as
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
-	entries  []*Entry
+	entries  entries
 	stop     chan struct{}
 	add      chan *Entry
 	snapshot chan []*Entry
@@ -47,6 +59,8 @@ type Entry struct {
 
 	// The Job to run.
 	Job Job
+	// And ID to associate with the entry. The ID can be used to delete an entry.
+	ID string
 }
 
 // byTime is a wrapper for sorting the entry array by time
@@ -76,7 +90,7 @@ func New() *Cron {
 // NewWithLocation returns a new Cron job runner.
 func NewWithLocation(location *time.Location) *Cron {
 	return &Cron{
-		entries:  nil,
+		entries:  map[string]*Entry{},
 		add:      make(chan *Entry),
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
@@ -85,6 +99,10 @@ func NewWithLocation(location *time.Location) *Cron {
 		location: location,
 	}
 }
+func genUUID() string {
+	id := uuid.New()
+	return id.String()
+}
 
 // A wrapper that turns a func() into a cron.Job
 type FuncJob func()
@@ -92,28 +110,32 @@ type FuncJob func()
 func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
-func (c *Cron) AddFunc(spec string, cmd func()) error {
-	return c.AddJob(spec, FuncJob(cmd))
+func (c *Cron) AddFunc(spec string, cmd func(), ID string) error {
+	return c.AddJob(spec, FuncJob(cmd), ID)
 }
 
 // AddJob adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) AddJob(spec string, cmd Job) error {
+func (c *Cron) AddJob(spec string, cmd Job, ID string) error {
 	schedule, err := Parse(spec)
 	if err != nil {
 		return err
 	}
-	c.Schedule(schedule, cmd)
+	c.Schedule(schedule, cmd, ID)
 	return nil
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) Schedule(schedule Schedule, cmd Job) {
+func (c *Cron) Schedule(schedule Schedule, cmd Job, ID string) {
+	if ID == "" {
+		ID = genUUID()
+	}
 	entry := &Entry{
 		Schedule: schedule,
 		Job:      cmd,
+		ID:       ID,
 	}
 	if !c.running {
-		c.entries = append(c.entries, entry)
+		c.entries[entry.ID] = entry
 		return
 	}
 
@@ -175,16 +197,17 @@ func (c *Cron) run() {
 	}
 
 	for {
+		entries := c.entries.values()
 		// Determine the next entry to run.
-		sort.Sort(byTime(c.entries))
+		sort.Sort(byTime(entries))
 
 		var timer *time.Timer
-		if len(c.entries) == 0 || c.entries[0].Next.IsZero() {
+		if len(entries) == 0 || entries[0].Next.IsZero() {
 			// If there are no entries yet, just sleep - it still handles new entries
 			// and stop requests.
 			timer = time.NewTimer(100000 * time.Hour)
 		} else {
-			timer = time.NewTimer(c.entries[0].Next.Sub(now))
+			timer = time.NewTimer(entries[0].Next.Sub(now))
 		}
 
 		for {
@@ -192,7 +215,7 @@ func (c *Cron) run() {
 			case now = <-timer.C:
 				now = now.In(c.location)
 				// Run every entry whose next time was less than now
-				for _, e := range c.entries {
+				for _, e := range entries {
 					if e.Next.After(now) || e.Next.IsZero() {
 						break
 					}
@@ -205,7 +228,7 @@ func (c *Cron) run() {
 				timer.Stop()
 				now = c.now()
 				newEntry.Next = newEntry.Schedule.Next(now)
-				c.entries = append(c.entries, newEntry)
+				c.entries[newEntry.ID] = newEntry
 
 			case <-c.snapshot:
 				c.snapshot <- c.entrySnapshot()
@@ -250,6 +273,7 @@ func (c *Cron) entrySnapshot() []*Entry {
 			Job:      e.Job,
 		})
 	}
+	sort.Sort(byTime(entries))
 	return entries
 }
 
