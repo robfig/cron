@@ -92,8 +92,8 @@ or cron is run. This is supported by formatting the cron spec like this:
 where "duration" is a string accepted by time.ParseDuration
 (http://golang.org/pkg/time/#ParseDuration).
 
-For example, "@every 1h30m10s" would indicate a schedule that activates immediately,
-and then every 1 hour, 30 minutes, 10 seconds.
+For example, "@every 1h30m10s" would indicate a schedule that activates after
+1 hour, 30 minutes, 10 seconds, and then every interval after that.
 
 Note: The interval does not take the job runtime into account.  For example,
 if a job takes 3 minutes to run, and it is scheduled to run every 5 minutes,
