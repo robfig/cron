@@ -4,6 +4,7 @@ package cron // import "gopkg.in/robfig/cron.v2"
 import (
 	"sort"
 	"time"
+	"sync/atomic"
 )
 
 // Cron keeps track of any number of entries, invoking the associated func as
@@ -109,7 +110,7 @@ func (c *Cron) AddJob(spec string, cmd Job) (EntryID, error) {
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
 func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
-	c.nextID++
+	atomic.AddUint64(&c.nextID, 1)
 	entry := &Entry{
 		ID:       c.nextID,
 		Schedule: schedule,
