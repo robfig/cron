@@ -5,6 +5,9 @@ import (
 	"runtime"
 	"sort"
 	"time"
+	"reflect"
+	"errors"
+	"strconv"
 )
 
 // Cron keeps track of any number of entries, invoking the associated func as
@@ -86,23 +89,53 @@ func NewWithLocation(location *time.Location) *Cron {
 	}
 }
 
-// A wrapper that turns a func() into a cron.Job
 type FuncJob func()
 
 func (f FuncJob) Run() { f() }
 
+// A wrapper that turns a func() into a cron.Job
+type FuncJobComplex struct{
+  function  interface{}
+  params    []interface{}
+}
+
+func (el FuncJobComplex) Run() {
+  f := reflect.ValueOf( el.function )
+  in := make([]reflect.Value, len( el.params ))
+  for k, param := range el.params {
+    in[k] = reflect.ValueOf(param)
+  }
+  f.Call(in)
+}
+
 // AddFunc adds a func to the Cron to be run on the given schedule.
-func (c *Cron) AddFunc(spec string, cmd func()) error {
-	return c.AddJob(spec, FuncJob(cmd))
+func (c *Cron) AddFunc(spec string, cmd interface{}, params ...interface{}) error {
+  f := reflect.ValueOf( cmd )
+  if len( params ) != f.Type().NumIn() {
+    var refP = reflect.ValueOf(cmd).Pointer()
+    var refName = runtime.FuncForPC( refP ).Name()
+    var file, line = runtime.FuncForPC( refP ).FileLine( runtime.FuncForPC( refP ).Entry() )
+    log.Printf("the number of param is not adapted for function %v [ line: %v - file: %v ]", refName, line, file )
+
+    return errors.New( "the number of param is not adapted for function " + refName + " [ line: " + strconv.FormatInt( int64( line ), 10 ) + " - file: " + file +" ]" )
+  }
+
+  return c.AddJob(spec, FuncJobComplex{ cmd, params })
 }
 
 // AddJob adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) AddJob(spec string, cmd Job) error {
+func (c *Cron) AddJob(spec string, cmd interface{}) error {
 	schedule, err := Parse(spec)
 	if err != nil {
 		return err
 	}
-	c.Schedule(schedule, cmd)
+  switch converted := cmd.(type) {
+  case Job:
+    c.Schedule(schedule, converted)
+  case FuncJobComplex:
+    c.Schedule(schedule, converted)
+  }
+
 	return nil
 }
 
