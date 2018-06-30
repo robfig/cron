@@ -86,9 +86,10 @@ func NewWithLocation(location *time.Location) *Cron {
 	}
 }
 
-// A wrapper that turns a func() into a cron.Job
+// FuncJob is a wrapper that turns a func() into a cron.Job
 type FuncJob func()
 
+// Run runs a func job
 func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.

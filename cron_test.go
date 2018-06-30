@@ -116,7 +116,7 @@ func TestAddWhileRunningWithDelay(t *testing.T) {
 	defer cron.Stop()
 	time.Sleep(5 * time.Second)
 	var calls = 0
-	cron.AddFunc("* * * * * *", func() { calls += 1 })
+	cron.AddFunc("* * * * * *", func() { calls++ })
 
 	<-time.After(OneSecond)
 	if calls != 1 {
@@ -387,7 +387,7 @@ func (*ZeroSchedule) Next(time.Time) time.Time {
 func TestJobWithZeroTimeDoesNotRun(t *testing.T) {
 	cron := New()
 	calls := 0
-	cron.AddFunc("* * * * * *", func() { calls += 1 })
+	cron.AddFunc("* * * * * *", func() { calls++ })
 	cron.Schedule(new(ZeroSchedule), FuncJob(func() { t.Error("expected zero task will not run") }))
 	cron.Start()
 	defer cron.Stop()

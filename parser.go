@@ -8,12 +8,13 @@ import (
 	"time"
 )
 
-// Configuration options for creating a parser. Most options specify which
+// ParseOption is configuration options for creating a parser. Most options specify which
 // fields should be included, while others enable features. If a field is not
 // included the parser will assume a default value. These options do not change
 // the order fields are parse in.
 type ParseOption int
 
+// Configs
 const (
 	Second      ParseOption = 1 << iota // Seconds field, default 0
 	Minute                              // Minutes field, default 0
@@ -43,13 +44,13 @@ var defaults = []string{
 	"*",
 }
 
-// A custom Parser that can be configured.
+// Parser is a custom Parser that can be configured.
 type Parser struct {
 	options   ParseOption
 	optionals int
 }
 
-// Creates a custom Parser with custom options.
+// NewParser Creates a custom Parser with custom options.
 //
 //  // Standard parser without descriptors
 //  specParser := NewParser(Minute | Hour | Dom | Month | Dow)
