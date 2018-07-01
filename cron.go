@@ -15,9 +15,11 @@ type Cron struct {
 	stop     chan struct{}
 	add      chan *Entry
 	snapshot chan []*Entry
+	remove   chan int64
 	running  bool
 	ErrorLog *log.Logger
 	location *time.Location
+	nextID   int64
 }
 
 // Job is an interface for submitted cron jobs.
@@ -34,6 +36,7 @@ type Schedule interface {
 
 // Entry consists of a schedule and the func to execute on that schedule.
 type Entry struct {
+	ID int64
 	// The schedule on which this job should be run.
 	Schedule Schedule
 
@@ -80,6 +83,7 @@ func NewWithLocation(location *time.Location) *Cron {
 		add:      make(chan *Entry),
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
+		remove:   make(chan int64),
 		running:  false,
 		ErrorLog: nil,
 		location: location,
@@ -108,17 +112,19 @@ func (c *Cron) AddJob(spec string, cmd Job) error {
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
-func (c *Cron) Schedule(schedule Schedule, cmd Job) {
+func (c *Cron) Schedule(schedule Schedule, cmd Job) int64 {
+	c.nextID++
 	entry := &Entry{
+		ID:       c.nextID,
 		Schedule: schedule,
 		Job:      cmd,
 	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
-		return
+	} else {
+		c.add <- entry
 	}
-
-	c.add <- entry
+	return entry.ID
 }
 
 // Entries returns a snapshot of the cron entries.
@@ -134,6 +140,15 @@ func (c *Cron) Entries() []*Entry {
 // Location gets the time zone location
 func (c *Cron) Location() *time.Location {
 	return c.location
+}
+
+// Remove an entry from being run in the future.
+func (c *Cron) Remove(id int64) {
+	if c.running {
+		c.remove <- id
+	} else {
+		c.removeEntry(id)
+	}
 }
 
 // Start the cron scheduler in its own go-routine, or no-op if already started.
@@ -212,6 +227,8 @@ func (c *Cron) run() {
 				c.snapshot <- c.entrySnapshot()
 				continue
 
+			case id := <-c.remove:
+				c.removeEntry(id)
 			case <-c.stop:
 				timer.Stop()
 				return
@@ -257,4 +274,14 @@ func (c *Cron) entrySnapshot() []*Entry {
 // now returns current time in c location
 func (c *Cron) now() time.Time {
 	return time.Now().In(c.location)
+}
+
+func (c *Cron) removeEntry(id int64) {
+	var entries []*Entry
+	for _, e := range c.entries {
+		if e.ID != id {
+			entries = append(entries, e)
+		}
+	}
+	c.entries = entries
 }
