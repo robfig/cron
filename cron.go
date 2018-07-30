@@ -1,7 +1,6 @@
 package cron
 
 import (
-	"log"
 	"runtime"
 	"sort"
 	"time"
@@ -16,7 +15,7 @@ type Cron struct {
 	add      chan *Entry
 	snapshot chan []*Entry
 	running  bool
-	ErrorLog *log.Logger
+	ErrorLog Logger
 	location *time.Location
 }
 
@@ -81,7 +80,7 @@ func NewWithLocation(location *time.Location) *Cron {
 		stop:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
 		running:  false,
-		ErrorLog: nil,
+		ErrorLog: newStdOutLogger(),
 		location: location,
 	}
 }
@@ -223,11 +222,7 @@ func (c *Cron) run() {
 
 // Logs an error to stderr or to the configured error log
 func (c *Cron) logf(format string, args ...interface{}) {
-	if c.ErrorLog != nil {
-		c.ErrorLog.Printf(format, args...)
-	} else {
-		log.Printf(format, args...)
-	}
+	c.ErrorLog.Logf(format, args...)
 }
 
 // Stop stops the cron scheduler if it is running; otherwise it does nothing.
