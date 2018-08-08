@@ -8,7 +8,7 @@ them in their own goroutines.
 
 	c := cron.New()
 	c.AddFunc("0 30 * * * *", func() { fmt.Println("Every hour on the half hour") })
-	c.AddFunc("TZ=Asia/Tokyo 30 04 * * * *", func() { fmt.Println("Runs at 04:30 Tokyo time every day") })
+	c.AddFunc("TZ=Asia/Tokyo 30 04 * * *", func() { fmt.Println("Runs at 04:30 Tokyo time every day") })
 	c.AddFunc("@hourly",      func() { fmt.Println("Every hour") })
 	c.AddFunc("@every 1h30m", func() { fmt.Println("Every hour thirty") })
 	c.Start()
