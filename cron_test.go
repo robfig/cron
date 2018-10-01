@@ -397,6 +397,20 @@ func TestJobWithZeroTimeDoesNotRun(t *testing.T) {
 	}
 }
 
+// Tests that named jobs are correctly registered
+func TestNamedJob(t *testing.T) {
+	cron := New()
+	cron.AddNamedFunc("* * * * * *", "job1", func() {})
+	jobs := cron.Entries()
+	count := len(jobs)
+	if count != 1 {
+		t.Errorf("Expected 1 job. Got %d.\n", count)
+	}
+	if jobs[0].Name != "job1" {
+		t.Errorf("Expected job name to be 'job1'. Got %s.\n", jobs[0].Name)
+	}
+}
+
 func wait(wg *sync.WaitGroup) chan bool {
 	ch := make(chan bool)
 	go func() {

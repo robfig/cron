@@ -47,6 +47,9 @@ type Entry struct {
 
 	// The Job to run.
 	Job Job
+
+	// The Job's name. Useful when querying the schedule
+	Name string
 }
 
 // byTime is a wrapper for sorting the entry array by time
@@ -93,7 +96,13 @@ func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
 func (c *Cron) AddFunc(spec string, cmd func()) error {
-	return c.AddJob(spec, FuncJob(cmd))
+	return c.AddNamedFunc(spec, "", FuncJob(cmd))
+}
+
+// AddNamedFunc adds a func to the Cron to be run on the given schedule. It
+// accepts an extra name parameter used to identify the function among others.
+func (c *Cron) AddNamedFunc(spec, name string, cmd func()) error {
+	return c.AddNamedJob(spec, name, FuncJob(cmd))
 }
 
 // AddJob adds a Job to the Cron to be run on the given schedule.
@@ -106,11 +115,37 @@ func (c *Cron) AddJob(spec string, cmd Job) error {
 	return nil
 }
 
+// AddNamedJob adds a Job to the Cron to be run on the given schedule and a
+// given name
+func (c *Cron) AddNamedJob(spec, name string, cmd Job) error {
+	schedule, err := Parse(spec)
+	if err != nil {
+		return err
+	}
+	c.ScheduleNamed(schedule, name, cmd)
+	return nil
+}
+
 // Schedule adds a Job to the Cron to be run on the given schedule.
 func (c *Cron) Schedule(schedule Schedule, cmd Job) {
 	entry := &Entry{
 		Schedule: schedule,
 		Job:      cmd,
+	}
+	if !c.running {
+		c.entries = append(c.entries, entry)
+		return
+	}
+
+	c.add <- entry
+}
+
+// ScheduleNamed adds a named Job to the Cron to be run on a given schedule.
+func (c *Cron) ScheduleNamed(schedule Schedule, name string, cmd Job) {
+	entry := &Entry{
+		Schedule: schedule,
+		Job:      cmd,
+		Name:     name,
 	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
@@ -248,6 +283,7 @@ func (c *Cron) entrySnapshot() []*Entry {
 			Next:     e.Next,
 			Prev:     e.Prev,
 			Job:      e.Job,
+			Name:     e.Name,
 		})
 	}
 	return entries

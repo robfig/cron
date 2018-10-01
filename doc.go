@@ -10,6 +10,8 @@ them in their own goroutines.
 	c.AddFunc("0 30 * * * *", func() { fmt.Println("Every hour on the half hour") })
 	c.AddFunc("@hourly",      func() { fmt.Println("Every hour") })
 	c.AddFunc("@every 1h30m", func() { fmt.Println("Every hour thirty") })
+	// Functions may have a name
+	c.AddNamedFunc("@every 27m", "Every 27 minutes", func() { fmt.Println("Every 27 minutes")})
 	c.Start()
 	..
 	// Funcs are invoked in their own goroutine, asynchronously.
@@ -84,7 +86,7 @@ You may use one of several pre-defined schedules in place of a cron expression.
 
 Intervals
 
-You may also schedule a job to execute at fixed intervals, starting at the time it's added 
+You may also schedule a job to execute at fixed intervals, starting at the time it's added
 or cron is run. This is supported by formatting the cron spec like this:
 
     @every <duration>
