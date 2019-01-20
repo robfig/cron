@@ -79,8 +79,21 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 	if len(spec) == 0 {
 		return nil, fmt.Errorf("Empty spec string")
 	}
-	if spec[0] == '@' && p.options&Descriptor > 0 {
-		return parseDescriptor(spec)
+
+	// Extract timezone if present
+	var loc = time.Local
+	if strings.HasPrefix(spec, "TZ=") {
+		var err error
+		i := strings.Index(spec, " ")
+		if loc, err = time.LoadLocation(spec[3:i]); err != nil {
+			return nil, fmt.Errorf("Provided bad location %s: %v", spec[3:i], err)
+		}
+		spec = strings.TrimSpace(spec[i:])
+	}
+
+	// Handle named schedules (descriptors)
+	if strings.HasPrefix(spec, "@") {
+		return parseDescriptor(spec, loc)
 	}
 
 	// Figure out how many fields we need
@@ -92,7 +105,7 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 	}
 	min := max - p.optionals
 
-	// Split fields on whitespace
+	// Split on whitespace.
 	fields := strings.Fields(spec)
 
 	// Validate number of fields
@@ -129,12 +142,13 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 	}
 
 	return &SpecSchedule{
-		Second: second,
-		Minute: minute,
-		Hour:   hour,
-		Dom:    dayofmonth,
-		Month:  month,
-		Dow:    dayofweek,
+		Second:   second,
+		Minute:   minute,
+		Hour:     hour,
+		Dom:      dayofmonth,
+		Month:    month,
+		Dow:      dayofweek,
+                Location: loc,
 	}, nil
 }
 
@@ -314,57 +328,63 @@ func all(r bounds) uint64 {
 }
 
 // parseDescriptor returns a predefined schedule for the expression, or error if none matches.
-func parseDescriptor(descriptor string) (Schedule, error) {
+func parseDescriptor(descriptor string, loc *time.Location) (Schedule, error) {
 	switch descriptor {
 	case "@yearly", "@annually":
 		return &SpecSchedule{
-			Second: 1 << seconds.min,
-			Minute: 1 << minutes.min,
-			Hour:   1 << hours.min,
-			Dom:    1 << dom.min,
-			Month:  1 << months.min,
-			Dow:    all(dow),
+			Second:   1 << seconds.min,
+			Minute:   1 << minutes.min,
+			Hour:     1 << hours.min,
+			Dom:      1 << dom.min,
+			Month:    1 << months.min,
+			Dow:      all(dow),
+			Location: loc,
 		}, nil
 
 	case "@monthly":
 		return &SpecSchedule{
-			Second: 1 << seconds.min,
-			Minute: 1 << minutes.min,
-			Hour:   1 << hours.min,
-			Dom:    1 << dom.min,
-			Month:  all(months),
-			Dow:    all(dow),
+			Second:   1 << seconds.min,
+			Minute:   1 << minutes.min,
+			Hour:     1 << hours.min,
+			Dom:      1 << dom.min,
+			Month:    all(months),
+			Dow:      all(dow),
+			Location: loc,
 		}, nil
 
 	case "@weekly":
 		return &SpecSchedule{
-			Second: 1 << seconds.min,
-			Minute: 1 << minutes.min,
-			Hour:   1 << hours.min,
-			Dom:    all(dom),
-			Month:  all(months),
-			Dow:    1 << dow.min,
+			Second:   1 << seconds.min,
+			Minute:   1 << minutes.min,
+			Hour:     1 << hours.min,
+			Dom:      all(dom),
+			Month:    all(months),
+			Dow:      1 << dow.min,
+			Location: loc,
 		}, nil
 
 	case "@daily", "@midnight":
 		return &SpecSchedule{
-			Second: 1 << seconds.min,
-			Minute: 1 << minutes.min,
-			Hour:   1 << hours.min,
-			Dom:    all(dom),
-			Month:  all(months),
-			Dow:    all(dow),
+			Second:   1 << seconds.min,
+			Minute:   1 << minutes.min,
+			Hour:     1 << hours.min,
+			Dom:      all(dom),
+			Month:    all(months),
+			Dow:      all(dow),
+			Location: loc,
 		}, nil
 
 	case "@hourly":
 		return &SpecSchedule{
-			Second: 1 << seconds.min,
-			Minute: 1 << minutes.min,
-			Hour:   all(hours),
-			Dom:    all(dom),
-			Month:  all(months),
-			Dow:    all(dow),
+			Second:   1 << seconds.min,
+			Minute:   1 << minutes.min,
+			Hour:     all(hours),
+			Dom:      all(dom),
+			Month:    all(months),
+			Dow:      all(dow),
+			Location: loc,
 		}, nil
+
 	}
 
 	const every = "@every "

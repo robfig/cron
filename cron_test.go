@@ -124,6 +124,43 @@ func TestAddWhileRunningWithDelay(t *testing.T) {
 	}
 }
 
+// Add a job, remove a job, start cron, expect nothing runs.
+func TestRemoveBeforeRunning(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	id, _ := cron.AddFunc("* * * * * ?", func() { wg.Done() })
+	cron.Remove(id)
+	cron.Start()
+	defer cron.Stop()
+
+	select {
+	case <-time.After(OneSecond):
+		// Success, shouldn't run
+	case <-wait(wg):
+		t.FailNow()
+	}
+}
+
+// Start cron, add a job, remove it, expect it doesn't run.
+func TestRemoveWhileRunning(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	cron := New()
+	cron.Start()
+	defer cron.Stop()
+	id, _ := cron.AddFunc("* * * * * ?", func() { wg.Done() })
+	cron.Remove(id)
+
+	select {
+	case <-time.After(OneSecond):
+	case <-wait(wg):
+		t.FailNow()
+	}
+}
+
 // Test timing with Entries.
 func TestSnapshotEntries(t *testing.T) {
 	wg := &sync.WaitGroup{}
@@ -146,7 +183,6 @@ func TestSnapshotEntries(t *testing.T) {
 		t.Error("expected job runs at 2 second mark")
 	case <-wait(wg):
 	}
-
 }
 
 // Test that the entries are correctly sorted.
@@ -160,10 +196,14 @@ func TestMultipleEntries(t *testing.T) {
 	cron := New()
 	cron.AddFunc("0 0 0 1 1 ?", func() {})
 	cron.AddFunc("* * * * * ?", func() { wg.Done() })
+	id1, _ := cron.AddFunc("* * * * * ?", func() { t.Fatal() })
+	id2, _ := cron.AddFunc("* * * * * ?", func() { t.Fatal() })
 	cron.AddFunc("0 0 0 31 12 ?", func() {})
 	cron.AddFunc("* * * * * ?", func() { wg.Done() })
 
+	cron.Remove(id1)
 	cron.Start()
+	cron.Remove(id2)
 	defer cron.Stop()
 
 	select {
@@ -282,7 +322,7 @@ func (t testJob) Run() {
 // Test that adding an invalid job spec returns an error
 func TestInvalidJobSpec(t *testing.T) {
 	cron := New()
-	err := cron.AddJob("this will not parse", nil)
+	_, err := cron.AddJob("this will not parse", nil)
 	if err == nil {
 		t.Errorf("expected an error with invalid spec, got nil")
 	}

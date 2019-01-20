@@ -116,77 +116,60 @@ func TestBits(t *testing.T) {
 	}
 }
 
-func TestParse(t *testing.T) {
+func TestParseScheduleErrors(t *testing.T) {
+	var tests = []struct{ expr, err string }{
+		{"* 5 j * * *", "Failed to parse int from"},
+		{"@every Xm", "Failed to parse duration"},
+		{"@unrecognized", "Unrecognized descriptor"},
+		{"* * * *", "Expected 5 to 6 fields"},
+		{"", "Empty spec string"},
+	}
+	for _, c := range tests {
+		actual, err := Parse(c.expr)
+		if err == nil || !strings.Contains(err.Error(), c.err) {
+			t.Errorf("%s => expected %v, got %v", c.expr, c.err, err)
+		}
+		if actual != nil {
+			t.Errorf("expected nil schedule on error, got %v", actual)
+		}
+	}
+}
+
+func TestParseSchedule(t *testing.T) {
+	tokyo, _ := time.LoadLocation("Asia/Tokyo")
 	entries := []struct {
 		expr     string
 		expected Schedule
-		err      string
 	}{
+		{"0 5 * * * *", every5min(time.Local)},
+                // Relied on the "optional seconds" behavior
+		// {"5 * * * *", every5min(time.Local)},
+		{"TZ=UTC  0 5 * * * *", every5min(time.UTC)},
+		// {"TZ=UTC  5 * * * *", every5min(time.UTC)},
+		{"TZ=Asia/Tokyo 0 5 * * * *", every5min(tokyo)},
+		{"@every 5m", ConstantDelaySchedule{5 * time.Minute}},
+		{"@midnight", midnight(time.Local)},
+		{"TZ=UTC  @midnight", midnight(time.UTC)},
+		{"TZ=Asia/Tokyo @midnight", midnight(tokyo)},
+		{"@yearly", annual(time.Local)},
+		{"@annually", annual(time.Local)},
 		{
 			expr: "* 5 * * * *",
 			expected: &SpecSchedule{
-				Second: all(seconds),
-				Minute: 1 << 5,
-				Hour:   all(hours),
-				Dom:    all(dom),
-				Month:  all(months),
-				Dow:    all(dow),
+				Second:   all(seconds),
+				Minute:   1 << 5,
+				Hour:     all(hours),
+				Dom:      all(dom),
+				Month:    all(months),
+				Dow:      all(dow),
+				Location: time.Local,
 			},
-		},
-		{
-			expr: "* 5 j * * *",
-			err:  "Failed to parse int from",
-		},
-		{
-			expr:     "@every 5m",
-			expected: ConstantDelaySchedule{Delay: time.Duration(5) * time.Minute},
-		},
-		{
-			expr: "@every Xm",
-			err:  "Failed to parse duration",
-		},
-		{
-			expr: "@yearly",
-			expected: &SpecSchedule{
-				Second: 1 << seconds.min,
-				Minute: 1 << minutes.min,
-				Hour:   1 << hours.min,
-				Dom:    1 << dom.min,
-				Month:  1 << months.min,
-				Dow:    all(dow),
-			},
-		},
-		{
-			expr: "@annually",
-			expected: &SpecSchedule{
-				Second: 1 << seconds.min,
-				Minute: 1 << minutes.min,
-				Hour:   1 << hours.min,
-				Dom:    1 << dom.min,
-				Month:  1 << months.min,
-				Dow:    all(dow),
-			},
-		},
-		{
-			expr: "@unrecognized",
-			err:  "Unrecognized descriptor",
-		},
-		{
-			expr: "* * * *",
-			err:  "Expected 5 to 6 fields",
-		},
-		{
-			expr: "",
-			err:  "Empty spec string",
 		},
 	}
 
 	for _, c := range entries {
 		actual, err := Parse(c.expr)
-		if len(c.err) != 0 && (err == nil || !strings.Contains(err.Error(), c.err)) {
-			t.Errorf("%s => expected %v, got %v", c.expr, c.err, err)
-		}
-		if len(c.err) == 0 && err != nil {
+		if err != nil {
 			t.Errorf("%s => unexpected error %v", c.expr, err)
 		}
 		if !reflect.DeepEqual(actual, c.expected) {
@@ -203,7 +186,7 @@ func TestStandardSpecSchedule(t *testing.T) {
 	}{
 		{
 			expr:     "5 * * * *",
-			expected: &SpecSchedule{1 << seconds.min, 1 << 5, all(hours), all(dom), all(months), all(dow)},
+			expected: &SpecSchedule{1 << seconds.min, 1 << 5, all(hours), all(dom), all(months), all(dow), time.Local},
 		},
 		{
 			expr:     "@every 5m",
@@ -230,5 +213,25 @@ func TestStandardSpecSchedule(t *testing.T) {
 		if !reflect.DeepEqual(actual, c.expected) {
 			t.Errorf("%s => expected %b, got %b", c.expr, c.expected, actual)
 		}
+	}
+}
+
+func every5min(loc *time.Location) *SpecSchedule {
+	return &SpecSchedule{1 << 0, 1 << 5, all(hours), all(dom), all(months), all(dow), loc}
+}
+
+func midnight(loc *time.Location) *SpecSchedule {
+	return &SpecSchedule{1, 1, 1, all(dom), all(months), all(dow), loc}
+}
+
+func annual(loc *time.Location) *SpecSchedule {
+	return &SpecSchedule{
+		Second:   1 << seconds.min,
+		Minute:   1 << minutes.min,
+		Hour:     1 << hours.min,
+		Dom:      1 << dom.min,
+		Month:    1 << months.min,
+		Dow:      all(dow),
+		Location: loc,
 	}
 }
