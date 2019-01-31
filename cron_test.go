@@ -414,3 +414,35 @@ func stop(cron *Cron) chan bool {
 	}()
 	return ch
 }
+
+func TestConcurrentEntriesCalls(t *testing.T) {
+	cron := New()
+	cron.AddFunc("0 0 0 24 Jun ?", func() {})
+	cron.AddFunc("0 0 0 10 Jan ?", func() {})
+	cron.AddFunc("0 0 0 30 Jan ?", func() {})
+
+	cron.Start()
+	defer cron.Stop()
+
+	wg := &sync.WaitGroup{}
+
+	numThreads := 2
+
+	for thread := 0; thread < numThreads; thread++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			start := time.Now()
+			for {
+				if entries := cron.Entries(); len(entries) != 3 {
+					t.Fatalf("want three entries, got %v", entries)
+				}
+				if time.Since(start) > time.Duration(5)*time.Second {
+					break
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+}

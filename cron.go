@@ -14,6 +14,7 @@ type Cron struct {
 	entries  []*Entry
 	stop     chan struct{}
 	add      chan *Entry
+	snap     chan struct{}
 	snapshot chan []*Entry
 	running  bool
 	ErrorLog *log.Logger
@@ -79,6 +80,7 @@ func NewWithLocation(location *time.Location) *Cron {
 		entries:  nil,
 		add:      make(chan *Entry),
 		stop:     make(chan struct{}),
+		snap:     make(chan struct{}),
 		snapshot: make(chan []*Entry),
 		running:  false,
 		ErrorLog: nil,
@@ -123,7 +125,8 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) {
 // Entries returns a snapshot of the cron entries.
 func (c *Cron) Entries() []*Entry {
 	if c.running {
-		c.snapshot <- nil
+		// Request a snapshot from the run() goroutine.
+		c.snap <- struct{}{}
 		x := <-c.snapshot
 		return x
 	}
@@ -207,7 +210,7 @@ func (c *Cron) run() {
 				newEntry.Next = newEntry.Schedule.Next(now)
 				c.entries = append(c.entries, newEntry)
 
-			case <-c.snapshot:
+			case <-c.snap:
 				c.snapshot <- c.entrySnapshot()
 				continue
 
