@@ -115,10 +115,18 @@ func TestAddWhileRunningWithDelay(t *testing.T) {
 	cron.Start()
 	defer cron.Stop()
 	time.Sleep(5 * time.Second)
+	callLock := sync.Mutex{}
 	var calls = 0
-	cron.AddFunc("* * * * * *", func() { calls += 1 })
+	cron.AddFunc("* * * * * *", func() {
+		callLock.Lock()
+		defer callLock.Unlock()
+		calls += 1
+
+	})
 
 	<-time.After(OneSecond)
+	callLock.Lock()
+	defer callLock.Unlock()
 	if calls != 1 {
 		t.Errorf("called %d times, expected 1\n", calls)
 	}
@@ -386,15 +394,32 @@ func (*ZeroSchedule) Next(time.Time) time.Time {
 // Tests that job without time does not run
 func TestJobWithZeroTimeDoesNotRun(t *testing.T) {
 	cron := New()
-	calls := 0
-	cron.AddFunc("* * * * * *", func() { calls += 1 })
+	callLock := sync.Mutex{}
+	var calls = 0
+	cron.AddFunc("* * * * * *", func() {
+		callLock.Lock()
+		defer callLock.Unlock()
+		calls += 1
+
+	})
+
 	cron.Schedule(new(ZeroSchedule), FuncJob(func() { t.Error("expected zero task will not run") }))
 	cron.Start()
 	defer cron.Stop()
 	<-time.After(OneSecond)
+	callLock.Lock()
+	defer callLock.Unlock()
 	if calls != 1 {
 		t.Errorf("called %d times, expected 1\n", calls)
 	}
+}
+
+func TestMultiThreadedStartAndStop(t *testing.T) {
+	cron := New()
+	go cron.Run()
+	time.Sleep(2 * time.Millisecond)
+	cron.Stop()
+
 }
 
 func wait(wg *sync.WaitGroup) chan bool {
