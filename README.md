@@ -34,6 +34,10 @@ Updates required:
   UPDATING: Code that sets Cron.ErrorLogger or calls Cron.SetLocation must be
   updated to provide those values on construction.
 
+- CRON_TZ is now the recommended way to specify the timezone of a single
+  schedule, which is sanctioned by the specification. The legacy "TZ=" prefix
+  will continue to be supported since it is unambiguous and easy to do so.
+
 ### Background - Cron spec format
 
 There are two cron spec formats in common usage:

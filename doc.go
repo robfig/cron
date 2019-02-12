@@ -8,7 +8,7 @@ them in their own goroutines.
 
 	c := cron.New()
 	c.AddFunc("0 30 * * * *", func() { fmt.Println("Every hour on the half hour") })
-	c.AddFunc("TZ=Asia/Tokyo 30 04 * * * *", func() { fmt.Println("Runs at 04:30 Tokyo time every day") })
+	c.AddFunc("CRON_TZ=Asia/Tokyo 30 04 * * * *", func() { fmt.Println("Runs at 04:30 Tokyo time every day") })
 	c.AddFunc("@hourly",      func() { fmt.Println("Every hour") })
 	c.AddFunc("@every 1h30m", func() { fmt.Println("Every hour thirty") })
 	c.Start()
@@ -124,7 +124,7 @@ time zone (time.Local). You can specify a different time zone on construction:
 
 Individual cron schedules may also override the time zone they are to be
 interpreted in by providing an additional space-separated field at the beginning
-of the cron spec, of the form "TZ=Asia/Tokyo".
+of the cron spec, of the form "CRON_TZ=Asia/Tokyo".
 
 For example:
 
@@ -137,12 +137,14 @@ For example:
 	c.AddFunc("0 6 * * ?", ...)
 
 	# Runs at 6am in Asia/Tokyo
-	cron.New().AddFunc("TZ=Asia/Tokyo 0 6 * * ?", ...)
+	cron.New().AddFunc("CRON_TZ=Asia/Tokyo 0 6 * * ?", ...)
 
 	# Runs at 6am in Asia/Tokyo
 	c := cron.New(cron.WithLocation(nyc))
 	c.SetLocation("America/New_York")
-	c.AddFunc("TZ=Asia/Tokyo 0 6 * * ?", ...)
+	c.AddFunc("CRON_TZ=Asia/Tokyo 0 6 * * ?", ...)
+
+The prefix "TZ=(TIME ZONE)" is also supported for legacy compatibility.
 
 Be aware that jobs scheduled during daylight-savings leap-ahead transitions will
 not be run!
