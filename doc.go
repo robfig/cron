@@ -38,20 +38,20 @@ A cron expression represents a set of times, using 5 space-separated fields.
 Month and Day-of-week field values are case insensitive.  "SUN", "Sun", and
 "sun" are equally accepted.
 
-The specific interpretation of the format is based on [the Cron Wikipedia page].
-
-[the Cron Wikipedia page]: https://en.wikipedia.org/wiki/Cron
+The specific interpretation of the format is based on the Cron Wikipedia page:
+https://en.wikipedia.org/wiki/Cron
 
 Alternative Formats
 
-Alternative Cron expression formats (like [Quartz]) support other fields like
-seconds. You can implement that by [creating a custom Parser](#NewParser), e.g.
+Alternative Cron expression formats support other fields like seconds. You can
+implement that by creating a custom Parser as follows.
 
       cron.New(
           cron.WithParser(
               cron.SecondOptional | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor))
 
-[Quartz]: http://www.quartz-scheduler.org/documentation/quartz-2.x/tutorials/crontrigger.html
+The most popular alternative Cron expression format is Quartz:
+http://www.quartz-scheduler.org/documentation/quartz-2.x/tutorials/crontrigger.html
 
 Special Characters
 
@@ -104,8 +104,8 @@ or cron is run. This is supported by formatting the cron spec like this:
 
     @every <duration>
 
-where "duration" is a string accepted by
-[time.ParseDuration](http://golang.org/pkg/time/#ParseDuration).
+where "duration" is a string accepted by time.ParseDuration
+(http://golang.org/pkg/time/#ParseDuration).
 
 For example, "@every 1h30m10s" would indicate a schedule that activates after
 1 hour, 30 minutes, 10 seconds, and then every interval after that.
@@ -117,8 +117,7 @@ it will have only 2 minutes of idle time between each run.
 Time zones
 
 By default, all interpretation and scheduling is done in the machine's local
-time zone ([time.Local](https://golang.org/pkg/time/#Location)). You can change
-that default using the [WithLocation](#WithLocation) option:
+time zone (time.Local). You can specify a different time zone on construction:
 
       cron.New(
           cron.WithLocation(time.UTC))
