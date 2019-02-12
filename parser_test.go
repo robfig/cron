@@ -350,6 +350,14 @@ func TestStandardSpecSchedule(t *testing.T) {
 	}
 }
 
+func TestNoDescriptorParser(t *testing.T) {
+	parser := NewParser(Minute | Hour)
+	_, err := parser.Parse("@every 1m")
+	if err == nil {
+		t.Error("expected an error, got none")
+	}
+}
+
 func every5min(loc *time.Location) *SpecSchedule {
 	return &SpecSchedule{1 << 0, 1 << 5, all(hours), all(dom), all(months), all(dow), loc}
 }

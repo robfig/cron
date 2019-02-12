@@ -101,8 +101,11 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		spec = strings.TrimSpace(spec[i:])
 	}
 
-	// Handle named schedules (descriptors)
+	// Handle named schedules (descriptors), if configured
 	if strings.HasPrefix(spec, "@") {
+		if p.options&Descriptor == 0 {
+			return nil, fmt.Errorf("parser does not accept descriptors: %v", spec)
+		}
 		return parseDescriptor(spec, loc)
 	}
 
