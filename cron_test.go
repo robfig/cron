@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"testing"
-	"strings"
 	"time"
 )
 
