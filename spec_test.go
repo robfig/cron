@@ -263,3 +263,12 @@ func getTimeTZ(value string) time.Time {
 
 	return t
 }
+
+// https://github.com/robfig/cron/issues/144
+func TestSlash0NoHang(t *testing.T) {
+	schedule := "TZ=America/New_York 15/0 * * * *"
+	_, err := ParseStandard(schedule)
+	if err == nil {
+		t.Error("expected an error on 0 increment")
+	}
+}
