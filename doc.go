@@ -44,8 +44,12 @@ The specific interpretation of the format is based on [the Cron Wikipedia page].
 
 Alternative Formats
 
-Alternative Cron expression formats (like [Quartz]) support other fields (like
-seconds). You can implement that by [creating a custom Parser](#NewParser).
+Alternative Cron expression formats (like [Quartz]) support other fields like
+seconds. You can implement that by [creating a custom Parser](#NewParser), e.g.
+
+      cron.New(
+          cron.WithParser(
+              cron.SecondOptional | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor))
 
 [Quartz]: http://www.quartz-scheduler.org/documentation/quartz-2.x/tutorials/crontrigger.html
 
@@ -114,7 +118,10 @@ Time zones
 
 By default, all interpretation and scheduling is done in the machine's local
 time zone ([time.Local](https://golang.org/pkg/time/#Location)). You can change
-that default using [Cron.SetLocation](#Cron.SetLocation).
+that default using the [WithLocation](#WithLocation) option:
+
+      cron.New(
+          cron.WithLocation(time.UTC))
 
 Individual cron schedules may also override the time zone they are to be
 interpreted in by providing an additional space-separated field at the beginning
@@ -126,15 +133,15 @@ For example:
 	cron.New().AddFunc("0 6 * * ?", ...)
 
 	# Runs at 6am in America/New_York
-	c := cron.New()
-	c.SetLocation("America/New_York")
+	nyc, _ := time.LoadLocation("America/New_York")
+	c := cron.New(cron.WithLocation(nyc))
 	c.AddFunc("0 6 * * ?", ...)
 
 	# Runs at 6am in Asia/Tokyo
 	cron.New().AddFunc("TZ=Asia/Tokyo 0 6 * * ?", ...)
 
 	# Runs at 6am in Asia/Tokyo
-	c := cron.New()
+	c := cron.New(cron.WithLocation(nyc))
 	c.SetLocation("America/New_York")
 	c.AddFunc("TZ=Asia/Tokyo 0 6 * * ?", ...)
 

@@ -3,24 +3,38 @@
 
 # cron
 
-Documentation here: https://godoc.org/github.com/robfig/cron
-
 ## DRAFT - Upgrading to v3
 
 cron v3 is a major upgrade to the library that addresses all outstanding bugs,
 feature requests, and clarifications around usage. It is based on a merge of
-master (containing various fixes) and the v2 branch (containing a couple new
-features), with the addition of Go Modules support. It is currently in
-development.
+master which contains various fixes to issues found over the years and the v2
+branch which contains some backwards-incompatible features like removing cron
+jobs. In addition, it adds support for Go Modules and cleans up rough edges like
+the timezone support.
 
-These are the updates required:
+It is in development and will be considered released once a 3.0 version is
+tagged. It is backwards incompatible with both the v1 and v2 branches.
+
+Updates required:
 
 - The v1 branch accepted an optional seconds field at the beginning of the cron
   spec. This is non-standard and has led to a lot of confusion. The new default
-  parser conforms to the standard as described by
-  [the Cron wikipedia page]. This behavior is not currently supported in v3.
+  parser conforms to the standard as described by [the Cron wikipedia page].
 
-### Cron spec format
+  UPDATING: To retain the old behavior, construct your Cron with a custom
+  parser:
+
+      cron.New(
+          cron.WithParser(
+              cron.SecondOptional | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor))
+
+- The Cron type now accepts functional options on construction rather than the
+  ad-hoc behavior modification mechanisms before (setting a field, calling a setter).
+
+  UPDATING: Code that sets Cron.ErrorLogger or calls Cron.SetLocation must be
+  updated to provide those values on construction.
+
+### Background - Cron spec format
 
 There are two cron spec formats in common usage:
 

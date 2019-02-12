@@ -2,6 +2,7 @@ package cron
 
 import (
 	"log"
+	"os"
 	"runtime"
 	"sort"
 	"time"
@@ -17,8 +18,9 @@ type Cron struct {
 	remove   chan EntryID
 	snapshot chan []Entry
 	running  bool
-	ErrorLog *log.Logger
+	logger   *log.Logger
 	location *time.Location
+	parser   Parser
 	nextID   EntryID
 }
 
@@ -79,25 +81,39 @@ func (s byTime) Less(i, j int) bool {
 	return s[i].Next.Before(s[j].Next)
 }
 
-// New returns a new Cron job runner.
-// Jobs added to this cron are interpreted in the Local time zone by default.
-func New() *Cron {
-	return NewWithLocation(time.Local)
-}
-
-// NewWithLocation returns a new Cron job runner in the given time zone.
-// Jobs added to this cron are interpreted in this time zone unless overridden.
-func NewWithLocation(location *time.Location) *Cron {
-	return &Cron{
+// New returns a new Cron job runner, modified by the given options.
+//
+// Available Settings
+//
+//   Time Zone
+//     Description: The time zone in which schedules are interpreted
+//     Default:     time.Local
+//
+//   PanicLogger
+//     Description: How to log Jobs that panic
+//     Default:     Log the panic to os.Stderr
+//
+//   Parser
+//     Description:
+//     Default:     Parser that accepts the spec described here: https://en.wikipedia.org/wiki/Cron
+//
+// See "cron.With*" to modify the default behavior.
+func New(opts ...Option) *Cron {
+	c := &Cron{
 		entries:  nil,
 		add:      make(chan *Entry),
 		stop:     make(chan struct{}),
 		snapshot: make(chan []Entry),
 		remove:   make(chan EntryID),
 		running:  false,
-		ErrorLog: nil,
-		location: location,
+		logger:   log.New(os.Stderr, "", log.LstdFlags),
+		location: time.Local,
+		parser:   standardParser,
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 // FuncJob is a wrapper that turns a func() into a cron.Job
@@ -116,7 +132,7 @@ func (c *Cron) AddFunc(spec string, cmd func()) (EntryID, error) {
 // The spec is parsed using the time zone of this Cron instance as the default.
 // An opaque ID is returned that can be used to later remove it.
 func (c *Cron) AddJob(spec string, cmd Job) (EntryID, error) {
-	schedule, err := Parse(spec)
+	schedule, err := c.parser.Parse(spec)
 	if err != nil {
 		return 0, err
 	}
@@ -172,7 +188,7 @@ func (c *Cron) Remove(id EntryID) {
 	}
 }
 
-// Start the cron scheduler in its own go-routine, or no-op if already started.
+// Start the cron scheduler in its own goroutine, or no-op if already started.
 func (c *Cron) Start() {
 	if c.running {
 		return
@@ -269,11 +285,7 @@ func (c *Cron) now() time.Time {
 
 // Logs an error to stderr or to the configured error log
 func (c *Cron) logf(format string, args ...interface{}) {
-	if c.ErrorLog != nil {
-		c.ErrorLog.Printf(format, args...)
-	} else {
-		log.Printf(format, args...)
-	}
+	c.logger.Printf(format, args...)
 }
 
 // Stop stops the cron scheduler if it is running; otherwise it does nothing.

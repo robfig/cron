@@ -171,7 +171,7 @@ func TestNext(t *testing.T) {
 	}
 
 	for _, c := range runs {
-		sched, err := Parse(c.spec)
+		sched, err := secondParser.Parse(c.spec)
 		if err != nil {
 			t.Error(err)
 			continue
