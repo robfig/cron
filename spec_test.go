@@ -174,6 +174,14 @@ func TestNext(t *testing.T) {
 		// Unsatisfiable
 		{"Mon Jul 9 23:35 2012", "0 0 0 30 Feb ?", ""},
 		{"Mon Jul 9 23:35 2012", "0 0 0 31 Apr ?", ""},
+
+		// Monthly job
+		{"2012-11-04T00:00:00-0400", "0 0 3 3 * ?", "2012-12-03T03:00:00-0500"},
+
+		// Test the scenario of DST resulting in midnight not being a valid time.
+		// https://github.com/robfig/cron/issues/157
+		{"2018-10-17T05:00:00-0400", "TZ=America/Sao_Paulo 0 0 9 10 * ?", "2018-11-10T06:00:00-0500"},
+		{"2018-02-14T05:00:00-0500", "TZ=America/Sao_Paulo 0 0 9 22 * ?", "2018-02-22T07:00:00-0500"},
 	}
 
 	for _, c := range runs {

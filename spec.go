@@ -56,7 +56,8 @@ const (
 // Next returns the next time this schedule is activated, greater than the given
 // time.  If no time can be found to satisfy the schedule, return the zero time.
 func (s *SpecSchedule) Next(t time.Time) time.Time {
-	// General approach:
+	// General approach
+	//
 	// For Month, Day, Hour, Minute, Second:
 	// Check if the time value matches.  If yes, continue to the next field.
 	// If the field doesn't match the schedule, then increment the field until it matches.
@@ -109,12 +110,25 @@ WRAP:
 	}
 
 	// Now get a day in that month.
+	//
+	// NOTE: This causes issues for daylight savings regimes where midnight does
+	// not exist.  For example: Sao Paulo has DST that transforms midnight on
+	// 11/3 into 1am. Handle that by noticing when the Hour ends up != 0.
 	for !dayMatches(s, t) {
 		if !added {
 			added = true
 			t = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
 		}
 		t = t.AddDate(0, 0, 1)
+		// Notice if the hour is no longer midnight due to DST.
+		// Add an hour if it's 23, subtract an hour if it's 1.
+		if t.Hour() != 0 {
+			if t.Hour() > 12 {
+				t = t.Add(time.Duration(24-t.Hour()) * time.Hour)
+			} else {
+				t = t.Add(time.Duration(-t.Hour()) * time.Hour)
+			}
+		}
 
 		if t.Day() == 1 {
 			goto WRAP
