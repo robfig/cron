@@ -297,6 +297,7 @@ func (c *Cron) entrySnapshot() []*Entry {
 			Next:     e.Next,
 			Prev:     e.Prev,
 			Job:      e.Job,
+			ID:       e.ID,
 		})
 	}
 	sort.Sort(byTime(entries))
