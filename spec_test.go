@@ -1,6 +1,7 @@
 package cron
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -154,29 +155,29 @@ func TestNext(t *testing.T) {
 		{"2012-11-04T03:00:00-0500", "TZ=America/New_York 0 0 3 * * ?", "2012-11-05T03:00:00-0500"},
 
 		// hourly job
-		{"2012-11-04T00:00:00-0400", "0 0 * * * ?", "2012-11-04T01:00:00-0400"},
-		{"2012-11-04T01:00:00-0400", "0 0 * * * ?", "2012-11-04T01:00:00-0500"},
-		{"2012-11-04T01:00:00-0500", "0 0 * * * ?", "2012-11-04T02:00:00-0500"},
+		{"TZ=America/New_York 2012-11-04T00:00:00-0400", "0 0 * * * ?", "2012-11-04T01:00:00-0400"},
+		{"TZ=America/New_York 2012-11-04T01:00:00-0400", "0 0 * * * ?", "2012-11-04T01:00:00-0500"},
+		{"TZ=America/New_York 2012-11-04T01:00:00-0500", "0 0 * * * ?", "2012-11-04T02:00:00-0500"},
 
 		// 1am nightly job (runs twice)
-		{"2012-11-04T00:00:00-0400", "0 0 1 * * ?", "2012-11-04T01:00:00-0400"},
-		{"2012-11-04T01:00:00-0400", "0 0 1 * * ?", "2012-11-04T01:00:00-0500"},
-		{"2012-11-04T01:00:00-0500", "0 0 1 * * ?", "2012-11-05T01:00:00-0500"},
+		{"TZ=America/New_York 2012-11-04T00:00:00-0400", "0 0 1 * * ?", "2012-11-04T01:00:00-0400"},
+		{"TZ=America/New_York 2012-11-04T01:00:00-0400", "0 0 1 * * ?", "2012-11-04T01:00:00-0500"},
+		{"TZ=America/New_York 2012-11-04T01:00:00-0500", "0 0 1 * * ?", "2012-11-05T01:00:00-0500"},
 
 		// 2am nightly job
-		{"2012-11-04T00:00:00-0400", "0 0 2 * * ?", "2012-11-04T02:00:00-0500"},
-		{"2012-11-04T02:00:00-0500", "0 0 2 * * ?", "2012-11-05T02:00:00-0500"},
+		{"TZ=America/New_York 2012-11-04T00:00:00-0400", "0 0 2 * * ?", "2012-11-04T02:00:00-0500"},
+		{"TZ=America/New_York 2012-11-04T02:00:00-0500", "0 0 2 * * ?", "2012-11-05T02:00:00-0500"},
 
 		// 3am nightly job
-		{"2012-11-04T00:00:00-0400", "0 0 3 * * ?", "2012-11-04T03:00:00-0500"},
-		{"2012-11-04T03:00:00-0500", "0 0 3 * * ?", "2012-11-05T03:00:00-0500"},
+		{"TZ=America/New_York 2012-11-04T00:00:00-0400", "0 0 3 * * ?", "2012-11-04T03:00:00-0500"},
+		{"TZ=America/New_York 2012-11-04T03:00:00-0500", "0 0 3 * * ?", "2012-11-05T03:00:00-0500"},
 
 		// Unsatisfiable
 		{"Mon Jul 9 23:35 2012", "0 0 0 30 Feb ?", ""},
 		{"Mon Jul 9 23:35 2012", "0 0 0 31 Apr ?", ""},
 
 		// Monthly job
-		{"2012-11-04T00:00:00-0400", "0 0 3 3 * ?", "2012-12-03T03:00:00-0500"},
+		{"TZ=America/New_York 2012-11-04T00:00:00-0400", "0 0 3 3 * ?", "2012-12-03T03:00:00-0500"},
 
 		// Test the scenario of DST resulting in midnight not being a valid time.
 		// https://github.com/robfig/cron/issues/157
@@ -218,16 +219,27 @@ func getTime(value string) time.Time {
 		return time.Time{}
 	}
 
+	var location = time.Local
+	if strings.HasPrefix(value, "TZ=") {
+		parts := strings.Fields(value)
+		loc, err := time.LoadLocation(parts[0][len("TZ="):])
+		if err != nil {
+			panic("could not parse location:" + err.Error())
+		}
+		location = loc
+		value = parts[1]
+	}
+
 	var layouts = []string{
 		"Mon Jan 2 15:04 2006",
 		"Mon Jan 2 15:04:05 2006",
 	}
 	for _, layout := range layouts {
-		if t, err := time.ParseInLocation(layout, value, time.Local); err == nil {
+		if t, err := time.ParseInLocation(layout, value, location); err == nil {
 			return t
 		}
 	}
-	if t, err := time.Parse("2006-01-02T15:04:05-0700", value); err == nil {
+	if t, err := time.ParseInLocation("2006-01-02T15:04:05-0700", value, location); err == nil {
 		return t
 	}
 	panic("could not parse time value " + value)
