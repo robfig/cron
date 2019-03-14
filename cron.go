@@ -15,6 +15,7 @@ type Cron struct {
 	entries  []*Entry
 	stop     chan struct{}
 	add      chan *Entry
+	update   chan *Entry
 	remove   chan EntryID
 	snapshot chan []Entry
 	running  bool
@@ -104,6 +105,7 @@ func New(opts ...Option) *Cron {
 		add:      make(chan *Entry),
 		stop:     make(chan struct{}),
 		snapshot: make(chan []Entry),
+		update:   make(chan *Entry),
 		remove:   make(chan EntryID),
 		running:  false,
 		logger:   log.New(os.Stderr, "", log.LstdFlags),
@@ -177,6 +179,15 @@ func (c *Cron) Entry(id EntryID) Entry {
 		}
 	}
 	return Entry{}
+}
+
+// Update an already exising entry, entry.ID should be set to a valid ID
+func (c *Cron) Update(entry *Entry) {
+	if c.running {
+		c.update <- entry
+	} else {
+		c.updateEntry(entry)
+	}
 }
 
 // Remove an entry from being run in the future.
@@ -254,6 +265,10 @@ func (c *Cron) run() {
 					e.Next = e.Schedule.Next(now)
 				}
 
+			case e := <-c.update:
+				timer.Stop()
+				c.updateEntry(e)
+
 			case newEntry := <-c.add:
 				timer.Stop()
 				now = c.now()
@@ -304,6 +319,15 @@ func (c *Cron) entrySnapshot() []Entry {
 		entries[i] = *e
 	}
 	return entries
+}
+
+func (c *Cron) updateEntry(new *Entry) {
+	for _, entry := range c.entries {
+		if new.ID == entry.ID {
+			*entry = *new
+			return
+		}
+	}
 }
 
 func (c *Cron) removeEntry(id EntryID) {
