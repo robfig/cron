@@ -166,6 +166,83 @@ func TestNext(t *testing.T) {
 	}
 }
 
+func TestNextExt(t *testing.T) {
+	testNextExt(
+		t,
+		"0 0 0 29 02 *",
+		false,
+		"2019-02-28T15:04:05Z",
+		"2020-02-29T00:00:00Z",
+	)
+
+	testNextExt(
+		t,
+		"0 0 0 29 02 *",
+		false,
+		"2018-02-28T15:04:05Z",
+		"2019-02-28T00:00:00Z",
+	)
+
+	testNextExt(
+		t,
+		"0 0 0 29 02 *",
+		true,
+		"2018-02-28T15:04:05Z",
+		"2018-03-01T00:00:00Z",
+	)
+
+	testNextExt(
+		t,
+		"0 0 0 31 02 *",
+		true,
+		"2018-02-28T15:04:05Z",
+		"2018-03-01T00:00:00Z",
+	)
+
+	testNextExt(
+		t,
+		"0 0 0 31 02 *",
+		false,
+		"2018-02-28T15:04:05Z",
+		"2019-02-28T00:00:00Z",
+	)
+
+	testNextExt(
+		t,
+		"0 0 0 31 02 *",
+		false,
+		"2018-02-27T15:04:05Z",
+		"2018-02-28T00:00:00Z",
+	)
+}
+
+func testNextExt(t *testing.T, expr string, nextDay bool, st string, expec string) {
+	start, err := time.Parse(time.RFC3339, st)
+	if err != nil {
+		t.Errorf("fail when parse :%v to format: %v", st, time.RFC3339)
+	}
+	expected, err := time.Parse(time.RFC3339, expec)
+	if err != nil {
+		t.Errorf("fail when parse :%v to format: %v", expec, time.RFC3339)
+	}
+
+	sched, err := Parse(expr)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	specSched, ok := sched.(*SpecSchedule)
+	if !ok {
+		t.Error("only test for SpecSchedule")
+	}
+
+	//map from before => expected
+	next := specSched.NextExt(start, nextDay)
+	if !next.Equal(expected) {
+		t.Errorf("Test NextExt fail, given %v, expected %v but got : %v", start, expected, next)
+	}
+}
+
 func TestErrors(t *testing.T) {
 	invalidSpecs := []string{
 		"xyz",
