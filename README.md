@@ -25,6 +25,10 @@ Updates required:
   UPDATING: To retain the old behavior, construct your Cron with a custom
   parser:
 
+      // Seconds field, required
+      cron.New(cron.WithSeconds())
+
+      // Seconds field, optional
       cron.New(
           cron.WithParser(
               cron.SecondOptional | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor))
