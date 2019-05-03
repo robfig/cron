@@ -43,14 +43,14 @@ func TestActivation(t *testing.T) {
 		{"Sun Jul 1 00:00 2012", "@monthly", true},
 
 		// Test interaction of DOW and DOM.
-		// If both are specified, then only one needs to match.
+		// If both are restricted, then only one needs to match.
 		{"Sun Jul 15 00:00 2012", "* * 1,15 * Sun", true},
 		{"Fri Jun 15 00:00 2012", "* * 1,15 * Sun", true},
 		{"Wed Aug 1 00:00 2012", "* * 1,15 * Sun", true},
+		{"Sun Jul 15 00:00 2012", "* * */10 * Sun", true}, // verifies #70
 
 		// However, if one has a star, then both need to match.
 		{"Sun Jul 15 00:00 2012", "* * * * Mon", false},
-		{"Sun Jul 15 00:00 2012", "* * */10 * Sun", false},
 		{"Mon Jul 9 00:00 2012", "* * 1,15 * *", false},
 		{"Sun Jul 15 00:00 2012", "* * 1,15 * *", true},
 		{"Sun Jul 15 00:00 2012", "* * */2 * Sun", true},
@@ -97,7 +97,7 @@ func TestNext(t *testing.T) {
 
 		// Wrap around months
 		{"Mon Jul 9 23:35 2012", "0 0 0 9 Apr-Oct ?", "Thu Aug 9 00:00 2012"},
-		{"Mon Jul 9 23:35 2012", "0 0 0 */5 Apr,Aug,Oct Mon", "Mon Aug 6 00:00 2012"},
+		{"Mon Jul 9 23:35 2012", "0 0 0 */5 Apr,Aug,Oct Mon", "Tue Aug 1 00:00 2012"},
 		{"Mon Jul 9 23:35 2012", "0 0 0 */5 Oct Mon", "Mon Oct 1 00:00 2012"},
 
 		// Wrap around years

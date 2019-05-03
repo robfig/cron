@@ -322,6 +322,9 @@ func getRange(expr string, r bounds) (uint64, error) {
 		if singleDigit {
 			end = r.max
 		}
+		if step > 1 {
+			extra = 0
+		}
 	default:
 		return 0, fmt.Errorf("too many slashes: %s", expr)
 	}

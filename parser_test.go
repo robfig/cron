@@ -30,7 +30,7 @@ func TestRange(t *testing.T) {
 		{"5-7/1", 0, 7, 1<<5 | 1<<6 | 1<<7, ""},
 
 		{"*", 1, 3, 1<<1 | 1<<2 | 1<<3 | starBit, ""},
-		{"*/2", 1, 3, 1<<1 | 1<<3 | starBit, ""},
+		{"*/2", 1, 3, 1<<1 | 1<<3, ""},
 
 		{"5--5", 0, 0, zero, "too many hyphens"},
 		{"jan-x", 0, 0, zero, "failed to parse int from"},
