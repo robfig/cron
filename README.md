@@ -8,12 +8,13 @@
 cron v3 is a major upgrade to the library that addresses all outstanding bugs,
 feature requests, and clarifications around usage. It is based on a merge of
 master which contains various fixes to issues found over the years and the v2
-branch which contains some backwards-incompatible features like removing cron
-jobs. In addition, it adds support for Go Modules and cleans up rough edges like
-the timezone support.
+branch which contains some backwards-incompatible features like the ability to
+remove cron jobs. In addition, v3 adds support for Go Modules and cleans up
+rough edges like the timezone support.
 
-It is in development and will be considered released once a 3.0 version is
-tagged. It is backwards incompatible with both the v1 and v2 branches.
+It is currently IN DEVELOPMENT and will be considered released once a 3.0
+version is tagged. It is backwards INCOMPATIBLE with both the v1 and v2
+branches.
 
 Updates required:
 
@@ -37,6 +38,19 @@ Updates required:
 - CRON_TZ is now the recommended way to specify the timezone of a single
   schedule, which is sanctioned by the specification. The legacy "TZ=" prefix
   will continue to be supported since it is unambiguous and easy to do so.
+
+  UPDATING: No update is required.
+
+Planned updates before calling v3 done:
+
+- Job "Interceptors" (name tbd), which make it easy for callers to mix desired
+  behavior like the following:
+  - Recover any panics from jobs
+  - Block this job if the previous run hasn't completed yet
+  - Logging job invocations
+  - Notification when jobs are completed
+
+- Fix all open bugs
 
 ### Background - Cron spec format
 
