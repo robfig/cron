@@ -607,6 +607,13 @@ func TestStopAndWait(t *testing.T) {
 	})
 }
 
+func TestMultiThreadedStartAndStop(t *testing.T) {
+	cron := New()
+	go cron.Run()
+	time.Sleep(2 * time.Millisecond)
+	cron.Stop()
+}
+
 func wait(wg *sync.WaitGroup) chan bool {
 	ch := make(chan bool)
 	go func() {
