@@ -214,42 +214,14 @@ func normalizeFields(fields []string, options ParseOption) ([]string, error) {
 	return expandedFields, nil
 }
 
-// expandOptionalFields returns fields with any optional fields added in at
-// their default value, if not provided.
-//
-// It panics if the input does not fulfill the following precondition:
-//   1. (# options fields) - (1 optional field) <= len(fields) <= (# options fields)
-//   2. Any optional fields have had their field added.
-//      For example, options&SecondOptional implies options&Second)
-func expandOptionalFields(fields []string, options ParseOption) []string {
-	expectedFields := 0
-	for _, place := range places {
-		if options&place > 0 {
-			expectedFields++
-		}
-	}
-	switch {
-	case len(fields) == expectedFields:
-		return fields
-	case len(fields) == expectedFields-1:
-		switch {
-		case options&DowOptional > 0:
-			return append(fields, defaults[5]) // TODO: improve access to default
-		case options&SecondOptional > 0:
-			return append([]string{defaults[0]}, fields...)
-		}
-	}
-	panic(fmt.Errorf("expected %d fields, got %d", expectedFields, len(fields)))
-}
-
 var standardParser = NewParser(
 	Minute | Hour | Dom | Month | Dow | Descriptor,
 )
 
-// ParseStandard returns a new crontab schedule representing the given standardSpec
-// (https://en.wikipedia.org/wiki/Cron). It differs from Parse requiring to always
-// pass 5 entries representing: minute, hour, day of month, month and day of week,
-// in that order. It returns a descriptive error if the spec is not valid.
+// ParseStandard returns a new crontab schedule representing the given
+// standardSpec (https://en.wikipedia.org/wiki/Cron). It requires 5 entries
+// representing: minute, hour, day of month, month and day of week, in that
+// order. It returns a descriptive error if the spec is not valid.
 //
 // It accepts
 //   - Standard crontab specs, e.g. "* * * * ?"

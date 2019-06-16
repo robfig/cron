@@ -424,10 +424,18 @@ func TestJob(t *testing.T) {
 	cron := newWithSeconds()
 	cron.AddJob("0 0 0 30 Feb ?", testJob{wg, "job0"})
 	cron.AddJob("0 0 0 1 1 ?", testJob{wg, "job1"})
-	cron.AddJob("* * * * * ?", testJob{wg, "job2"})
+	job2, _ := cron.AddJob("* * * * * ?", testJob{wg, "job2"})
 	cron.AddJob("1 0 0 1 1 ?", testJob{wg, "job3"})
 	cron.Schedule(Every(5*time.Second+5*time.Nanosecond), testJob{wg, "job4"})
-	cron.Schedule(Every(5*time.Minute), testJob{wg, "job5"})
+	job5 := cron.Schedule(Every(5*time.Minute), testJob{wg, "job5"})
+
+	// Test getting an Entry pre-Start.
+	if actualName := cron.Entry(job2).Job.(testJob).name; actualName != "job2" {
+		t.Error("wrong job retrieved:", actualName)
+	}
+	if actualName := cron.Entry(job5).Job.(testJob).name; actualName != "job5" {
+		t.Error("wrong job retrieved:", actualName)
+	}
 
 	cron.Start()
 	defer cron.Stop()
@@ -450,6 +458,14 @@ func TestJob(t *testing.T) {
 		if actuals[i] != expected {
 			t.Fatalf("Jobs not in the right order.  (expected) %s != %s (actual)", expecteds, actuals)
 		}
+	}
+
+	// Test getting Entries.
+	if actualName := cron.Entry(job2).Job.(testJob).name; actualName != "job2" {
+		t.Error("wrong job retrieved:", actualName)
+	}
+	if actualName := cron.Entry(job5).Job.(testJob).name; actualName != "job5" {
+		t.Error("wrong job retrieved:", actualName)
 	}
 }
 
