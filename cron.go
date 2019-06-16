@@ -16,7 +16,7 @@ type Cron struct {
 	stop     chan struct{}
 	add      chan *Entry
 	remove   chan EntryID
-	snapshot chan []Entry
+	snapshot chan chan []Entry
 	running  bool
 	logger   *log.Logger
 	location *time.Location
@@ -103,7 +103,7 @@ func New(opts ...Option) *Cron {
 		entries:  nil,
 		add:      make(chan *Entry),
 		stop:     make(chan struct{}),
-		snapshot: make(chan []Entry),
+		snapshot: make(chan chan []Entry),
 		remove:   make(chan EntryID),
 		running:  false,
 		logger:   log.New(os.Stderr, "", log.LstdFlags),
@@ -158,8 +158,9 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
 // Entries returns a snapshot of the cron entries.
 func (c *Cron) Entries() []Entry {
 	if c.running {
-		c.snapshot <- nil
-		return <-c.snapshot
+		replyChan := make(chan []Entry, 1)
+		c.snapshot <- replyChan
+		return <-replyChan
 	}
 	return c.entrySnapshot()
 }
@@ -260,8 +261,8 @@ func (c *Cron) run() {
 				newEntry.Next = newEntry.Schedule.Next(now)
 				c.entries = append(c.entries, newEntry)
 
-			case <-c.snapshot:
-				c.snapshot <- c.entrySnapshot()
+			case replyChan := <-c.snapshot:
+				replyChan <- c.entrySnapshot()
 				continue
 
 			case <-c.stop:
