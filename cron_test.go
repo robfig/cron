@@ -34,13 +34,14 @@ func (sw *syncWriter) String() string {
 	return sw.wr.String()
 }
 
-func newBufLogger(sw *syncWriter) *log.Logger {
-	return log.New(sw, "", log.LstdFlags)
+func newBufLogger(sw *syncWriter) Logger {
+	return PrintfLogger(log.New(sw, "", log.LstdFlags))
 }
 
 func TestFuncPanicRecovery(t *testing.T) {
 	var buf syncWriter
-	cron := New(WithParser(secondParser), WithPanicLogger(newBufLogger(&buf)))
+	cron := New(WithParser(secondParser),
+		WithChain(Recover(newBufLogger(&buf))))
 	cron.Start()
 	defer cron.Stop()
 	cron.AddFunc("* * * * * ?", func() {
@@ -66,7 +67,8 @@ func TestJobPanicRecovery(t *testing.T) {
 	var job DummyJob
 
 	var buf syncWriter
-	cron := New(WithParser(secondParser), WithPanicLogger(newBufLogger(&buf)))
+	cron := New(WithParser(secondParser),
+		WithChain(Recover(newBufLogger(&buf))))
 	cron.Start()
 	defer cron.Stop()
 	cron.AddJob("* * * * * ?", job)
@@ -573,5 +575,5 @@ func stop(cron *Cron) chan bool {
 
 // newWithSeconds returns a Cron with the seconds field enabled.
 func newWithSeconds() *Cron {
-	return New(WithParser(secondParser))
+	return New(WithParser(secondParser), WithChain())
 }

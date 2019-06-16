@@ -150,6 +150,19 @@ The prefix "TZ=(TIME ZONE)" is also supported for legacy compatibility.
 Be aware that jobs scheduled during daylight-savings leap-ahead transitions will
 not be run!
 
+Job Wrappers / Chain
+
+A Cron runner may be configured with a chain of job wrappers to add
+cross-cutting functionality to all submitted jobs. For example, they may be used
+to achieve the following effects:
+
+  - Recover any panics from jobs (activated by default)
+  - Delay a job's execution if the previous run hasn't completed yet
+  - Skip a job's execution if the previous run hasn't completed yet
+  - Log each job's invocations
+
+Install wrappers using the `cron.WithChain` option.
+
 Thread safety
 
 Since the Cron service runs concurrently with the calling code, some amount of
