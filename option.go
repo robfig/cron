@@ -1,7 +1,6 @@
 package cron
 
 import (
-	"log"
 	"time"
 )
 
@@ -30,10 +29,11 @@ func WithParser(p Parser) Option {
 	}
 }
 
-// WithPanicLogger overrides the logger used for logging job panics.
-func WithPanicLogger(l *log.Logger) Option {
+// WithChain specifies Job wrappers to apply to all jobs added to this cron.
+// Refer to the Chain* functions in this package for provided wrappers.
+func WithChain(wrappers ...JobWrapper) Option {
 	return func(c *Cron) {
-		c.logger = l
+		c.chain = NewChain(wrappers...)
 	}
 }
 

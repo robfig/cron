@@ -3,20 +3,16 @@
 
 # cron
 
-## DRAFT - Upgrading to v3
+## Upgrading to v3 (June 2019)
 
 cron v3 is a major upgrade to the library that addresses all outstanding bugs,
-feature requests, and clarifications around usage. It is based on a merge of
-master which contains various fixes to issues found over the years and the v2
-branch which contains some backwards-incompatible features like the ability to
-remove cron jobs. In addition, v3 adds support for Go Modules and cleans up
-rough edges like the timezone support.
+feature requests, and rough edges. It is based on a merge of master which
+contains various fixes to issues found over the years and the v2 branch which
+contains some backwards-incompatible features like the ability to remove cron
+jobs. In addition, v3 adds support for Go Modules and cleans up rough edges like
+the timezone support.
 
-It is currently IN DEVELOPMENT and will be considered released once a 3.0
-version is tagged. It is backwards INCOMPATIBLE with both the v1 and v2
-branches.
-
-Updates required:
+It is backwards incompatible with both v1 and v2. These updates are required:
 
 - The v1 branch accepted an optional seconds field at the beginning of the cron
   spec. This is non-standard and has led to a lot of confusion. The new default
@@ -45,16 +41,24 @@ Updates required:
 
   UPDATING: No update is required.
 
-Planned updates before calling v3 done:
-
-- Job "Interceptors" (name tbd), which make it easy for callers to mix desired
-  behavior like the following:
-  - Recover any panics from jobs
-  - Block this job if the previous run hasn't completed yet
-  - Logging job invocations
+- The new Chain & JobWrapper types allow you to install "interceptors" to add
+  cross-cutting behavior like the following:
+  - Recover any panics from jobs (activated by default)
+  - Delay a job's execution if the previous run hasn't completed yet
+  - Skip a job's execution if the previous run hasn't completed yet
+  - Log each job's invocations
   - Notification when jobs are completed
 
-- Fix all open bugs
+  To avoid breaking backward compatibility, Entry.Job continues to be the value
+  that was submitted, and Entry has a new WrappedJob property which is the one
+  that is actually run.
+
+  UPDATING: `cron.WithPanicLogger` has been removed. Please update your code to
+  use this JobWrapper:
+
+      cron.New(cron.WithChain(
+          cron.RecoverWithLogger(logger),
+      ))
 
 ### Background - Cron spec format
 
@@ -70,5 +74,5 @@ There are two cron spec formats in common usage:
 [the Quartz Scheduler]: http://www.quartz-scheduler.org/documentation/quartz-2.x/tutorials/crontrigger.html
 
 The original version of this package included an optional "seconds" field, which
-made it incompatible with both of these formats. Instead, the schedule parser
-has been extended to support both types.
+made it incompatible with both of these formats. Now, the "standard" format is
+the default format accepted, and the Quartz format is opt-in.

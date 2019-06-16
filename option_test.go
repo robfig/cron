@@ -1,7 +1,6 @@
 package cron
 
 import (
-	"bytes"
 	"log"
 	"strings"
 	"testing"
@@ -20,15 +19,6 @@ func TestWithParser(t *testing.T) {
 	c := New(WithParser(parser))
 	if c.parser != parser {
 		t.Error("expected provided parser")
-	}
-}
-
-func TestWithPanicLogger(t *testing.T) {
-	var b bytes.Buffer
-	var logger = log.New(&b, "", log.LstdFlags)
-	c := New(WithPanicLogger(logger))
-	if c.logger != logger {
-		t.Error("expected provided logger")
 	}
 }
 

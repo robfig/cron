@@ -1,7 +1,6 @@
 package cron
 
 import (
-	"runtime"
 	"sort"
 	"time"
 )
@@ -11,6 +10,7 @@ import (
 // be inspected while running.
 type Cron struct {
 	entries  []*Entry
+	chain    Chain
 	stop     chan struct{}
 	add      chan *Entry
 	remove   chan EntryID
@@ -54,7 +54,12 @@ type Entry struct {
 	// Prev is the last time this job was run, or the zero time if never.
 	Prev time.Time
 
-	// Job is the thing to run when the Schedule is activated.
+	// WrappedJob is the thing to run when the Schedule is activated.
+	WrappedJob Job
+
+	// Job is the thing that was submitted to cron.
+	// It is kept around so that user code that needs to get at the job later,
+	// e.g. via Entries() can do so.
 	Job Job
 }
 
@@ -88,24 +93,24 @@ func (s byTime) Less(i, j int) bool {
 //     Description: The time zone in which schedules are interpreted
 //     Default:     time.Local
 //
-//   PanicLogger
-//     Description: How to log Jobs that panic
-//     Default:     Log the panic to os.Stderr
-//
 //   Parser
-//     Description:
-//     Default:     Parser that accepts the spec described here: https://en.wikipedia.org/wiki/Cron
+//     Description: Parser converts cron spec strings into cron.Schedules.
+//     Default:     Accepts this spec: https://en.wikipedia.org/wiki/Cron
+//
+//   Chain
+//     Description: Wrap submitted jobs to customize behavior.
+//     Default:     A chain that recovers panics.
 //
 // See "cron.With*" to modify the default behavior.
 func New(opts ...Option) *Cron {
 	c := &Cron{
 		entries:  nil,
+		chain:    NewChain(Recover()),
 		add:      make(chan *Entry),
 		stop:     make(chan struct{}),
 		snapshot: make(chan chan []Entry),
 		remove:   make(chan EntryID),
 		running:  false,
-		logger:   DefaultLogger,
 		vlogger:  nil,
 		location: time.Local,
 		parser:   standardParser,
@@ -140,12 +145,14 @@ func (c *Cron) AddJob(spec string, cmd Job) (EntryID, error) {
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
+// The job is wrapped with the configured Chain.
 func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
 	c.nextID++
 	entry := &Entry{
-		ID:       c.nextID,
-		Schedule: schedule,
-		Job:      cmd,
+		ID:         c.nextID,
+		Schedule:   schedule,
+		WrappedJob: c.chain.Then(cmd),
+		Job:        cmd,
 	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
@@ -207,18 +214,6 @@ func (c *Cron) Run() {
 	c.run()
 }
 
-func (c *Cron) runWithRecovery(j Job) {
-	defer func() {
-		if r := recover(); r != nil {
-			const size = 64 << 10
-			buf := make([]byte, size)
-			buf = buf[:runtime.Stack(buf, false)]
-			c.logger.Printf("panic running job: %v\n%s", r, buf)
-		}
-	}()
-	j.Run()
-}
-
 // run the scheduler.. this is private just due to the need to synchronize
 // access to the 'running' state variable.
 func (c *Cron) run() {
@@ -255,7 +250,7 @@ func (c *Cron) run() {
 					if e.Next.After(now) || e.Next.IsZero() {
 						break
 					}
-					go c.runWithRecovery(e.Job)
+					go e.WrappedJob.Run()
 					e.Prev = e.Next
 					e.Next = e.Schedule.Next(now)
 					c.logVerbosef("(%s) started entry %d, next scheduled for %s", now, e.ID, e.Next)
