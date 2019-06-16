@@ -1,7 +1,9 @@
 package cron
 
 import (
+	"context"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -9,18 +11,19 @@ import (
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
-	entries  []*Entry
-	chain    Chain
-	stop     chan struct{}
-	add      chan *Entry
-	remove   chan EntryID
-	snapshot chan chan []Entry
-	running  bool
-	logger   Logger
-	vlogger  Logger
-	location *time.Location
-	parser   Parser
-	nextID   EntryID
+	entries   []*Entry
+	chain     Chain
+	stop      chan struct{}
+	add       chan *Entry
+	remove    chan EntryID
+	snapshot  chan chan []Entry
+	running   bool
+	logger    Logger
+	vlogger   Logger
+	location  *time.Location
+	parser    Parser
+	nextID    EntryID
+	jobWaiter sync.WaitGroup
 }
 
 // Job is an interface for submitted cron jobs.
@@ -250,7 +253,7 @@ func (c *Cron) run() {
 					if e.Next.After(now) || e.Next.IsZero() {
 						break
 					}
-					go e.WrappedJob.Run()
+					c.startJob(e.WrappedJob)
 					e.Prev = e.Next
 					e.Next = e.Schedule.Next(now)
 					c.logVerbosef("(%s) started entry %d, next scheduled for %s", now, e.ID, e.Next)
@@ -298,18 +301,33 @@ func (c *Cron) logVerbosef(format string, args ...interface{}) {
 	}
 }
 
+// startJob runs the given job in a new goroutine.
+func (c *Cron) startJob(j Job) {
+	c.jobWaiter.Add(1)
+	go func() {
+		defer c.jobWaiter.Done()
+		j.Run()
+	}()
+}
+
 // now returns current time in c location
 func (c *Cron) now() time.Time {
 	return time.Now().In(c.location)
 }
 
 // Stop stops the cron scheduler if it is running; otherwise it does nothing.
-func (c *Cron) Stop() {
-	if !c.running {
-		return
+// A context is returned so the caller can wait for running jobs to complete.
+func (c *Cron) Stop() context.Context {
+	if c.running {
+		c.stop <- struct{}{}
+		c.running = false
 	}
-	c.stop <- struct{}{}
-	c.running = false
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		c.jobWaiter.Wait()
+		cancel()
+	}()
+	return ctx
 }
 
 // entrySnapshot returns a copy of the current cron entry list.
