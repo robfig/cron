@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -13,14 +14,32 @@ import (
 // Many tests schedule a job for every second, and then wait at most a second
 // for it to run.  This amount is just slightly larger than 1 second to
 // compensate for a few milliseconds of runtime.
-const OneSecond = 1*time.Second + 10*time.Millisecond
+const OneSecond = 1*time.Second + 50*time.Millisecond
 
-func newBufLogger(buf *bytes.Buffer) *log.Logger {
-	return log.New(buf, "", log.LstdFlags)
+type syncWriter struct {
+	wr bytes.Buffer
+	m  sync.Mutex
+}
+
+func (sw *syncWriter) Write(data []byte) (n int, err error) {
+	sw.m.Lock()
+	n, err = sw.wr.Write(data)
+	sw.m.Unlock()
+	return
+}
+
+func (sw *syncWriter) String() string {
+	sw.m.Lock()
+	defer sw.m.Unlock()
+	return sw.wr.String()
+}
+
+func newBufLogger(sw *syncWriter) *log.Logger {
+	return log.New(sw, "", log.LstdFlags)
 }
 
 func TestFuncPanicRecovery(t *testing.T) {
-	var buf bytes.Buffer
+	var buf syncWriter
 	cron := New(WithParser(secondParser), WithPanicLogger(newBufLogger(&buf)))
 	cron.Start()
 	defer cron.Stop()
@@ -46,7 +65,7 @@ func (d DummyJob) Run() {
 func TestJobPanicRecovery(t *testing.T) {
 	var job DummyJob
 
-	var buf bytes.Buffer
+	var buf syncWriter
 	cron := New(WithParser(secondParser), WithPanicLogger(newBufLogger(&buf)))
 	cron.Start()
 	defer cron.Stop()
@@ -132,11 +151,11 @@ func TestAddWhileRunningWithDelay(t *testing.T) {
 	cron.Start()
 	defer cron.Stop()
 	time.Sleep(5 * time.Second)
-	var calls = 0
-	cron.AddFunc("* * * * * *", func() { calls += 1 })
+	var calls int64
+	cron.AddFunc("* * * * * *", func() { atomic.AddInt64(&calls, 1) })
 
 	<-time.After(OneSecond)
-	if calls != 1 {
+	if atomic.LoadInt64(&calls) != 1 {
 		t.Errorf("called %d times, expected 1\n", calls)
 	}
 }
@@ -443,13 +462,13 @@ func (*ZeroSchedule) Next(time.Time) time.Time {
 // Tests that job without time does not run
 func TestJobWithZeroTimeDoesNotRun(t *testing.T) {
 	cron := newWithSeconds()
-	calls := 0
-	cron.AddFunc("* * * * * *", func() { calls += 1 })
+	var calls int64
+	cron.AddFunc("* * * * * *", func() { atomic.AddInt64(&calls, 1) })
 	cron.Schedule(new(ZeroSchedule), FuncJob(func() { t.Error("expected zero task will not run") }))
 	cron.Start()
 	defer cron.Stop()
 	<-time.After(OneSecond)
-	if calls != 1 {
+	if atomic.LoadInt64(&calls) != 1 {
 		t.Errorf("called %d times, expected 1\n", calls)
 	}
 }
