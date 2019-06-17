@@ -1,8 +1,6 @@
 package cron
 
 import (
-	"log"
-	"os"
 	"runtime"
 	"sort"
 	"time"
@@ -18,7 +16,8 @@ type Cron struct {
 	remove   chan EntryID
 	snapshot chan chan []Entry
 	running  bool
-	logger   *log.Logger
+	logger   Logger
+	vlogger  Logger
 	location *time.Location
 	parser   Parser
 	nextID   EntryID
@@ -106,7 +105,8 @@ func New(opts ...Option) *Cron {
 		snapshot: make(chan chan []Entry),
 		remove:   make(chan EntryID),
 		running:  false,
-		logger:   log.New(os.Stderr, "", log.LstdFlags),
+		logger:   DefaultLogger,
+		vlogger:  nil,
 		location: time.Local,
 		parser:   standardParser,
 	}
@@ -213,7 +213,7 @@ func (c *Cron) runWithRecovery(j Job) {
 			const size = 64 << 10
 			buf := make([]byte, size)
 			buf = buf[:runtime.Stack(buf, false)]
-			c.logf("cron: panic running job: %v\n%s", r, buf)
+			c.logger.Printf("panic running job: %v\n%s", r, buf)
 		}
 	}()
 	j.Run()
@@ -222,10 +222,13 @@ func (c *Cron) runWithRecovery(j Job) {
 // run the scheduler.. this is private just due to the need to synchronize
 // access to the 'running' state variable.
 func (c *Cron) run() {
+	c.logVerbosef("cron is starting")
+
 	// Figure out the next activation times for each entry.
 	now := c.now()
 	for _, entry := range c.entries {
 		entry.Next = entry.Schedule.Next(now)
+		c.logVerbosef("(%s) scheduled entry %d for %s", now, entry.ID, entry.Next)
 	}
 
 	for {
@@ -245,6 +248,8 @@ func (c *Cron) run() {
 			select {
 			case now = <-timer.C:
 				now = now.In(c.location)
+				c.logVerbosef("(%s) woke up", now)
+
 				// Run every entry whose next time was less than now
 				for _, e := range c.entries {
 					if e.Next.After(now) || e.Next.IsZero() {
@@ -253,6 +258,7 @@ func (c *Cron) run() {
 					go c.runWithRecovery(e.Job)
 					e.Prev = e.Next
 					e.Next = e.Schedule.Next(now)
+					c.logVerbosef("(%s) started entry %d, next scheduled for %s", now, e.ID, e.Next)
 				}
 
 			case newEntry := <-c.add:
@@ -260,6 +266,7 @@ func (c *Cron) run() {
 				now = c.now()
 				newEntry.Next = newEntry.Schedule.Next(now)
 				c.entries = append(c.entries, newEntry)
+				c.logVerbosef("(%s) added new entry %d, scheduled for", now, newEntry.ID, newEntry.Next)
 
 			case replyChan := <-c.snapshot:
 				replyChan <- c.entrySnapshot()
@@ -267,11 +274,13 @@ func (c *Cron) run() {
 
 			case <-c.stop:
 				timer.Stop()
+				c.logVerbosef("cron is stopping")
 				return
 
 			case id := <-c.remove:
 				timer.Stop()
 				c.removeEntry(id)
+				c.logVerbosef("removed entry %d", id)
 			}
 
 			break
@@ -279,14 +288,24 @@ func (c *Cron) run() {
 	}
 }
 
+// logVerbosef logs a verbose message, if such a logger is configured.
+func (c *Cron) logVerbosef(format string, args ...interface{}) {
+	if c.vlogger != nil {
+		// Format any times provided as RFC3339, easier to read than default.
+		var formattedArgs []interface{}
+		for _, arg := range args {
+			if t, ok := arg.(time.Time); ok {
+				arg = t.Format(time.RFC3339)
+			}
+			formattedArgs = append(formattedArgs, arg)
+		}
+		c.vlogger.Printf(format, formattedArgs...)
+	}
+}
+
 // now returns current time in c location
 func (c *Cron) now() time.Time {
 	return time.Now().In(c.location)
-}
-
-// Logs an error to stderr or to the configured error log
-func (c *Cron) logf(format string, args ...interface{}) {
-	c.logger.Printf(format, args...)
 }
 
 // Stop stops the cron scheduler if it is running; otherwise it does nothing.

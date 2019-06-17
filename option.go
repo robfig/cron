@@ -36,3 +36,10 @@ func WithPanicLogger(l *log.Logger) Option {
 		c.logger = l
 	}
 }
+
+// WithVerboseLogger enables verbose logging of events that occur in cron.
+func WithVerboseLogger(logger Logger) Option {
+	return func(c *Cron) {
+		c.vlogger = logger
+	}
+}
