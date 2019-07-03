@@ -9,10 +9,22 @@ cron v3 is a major upgrade to the library that addresses all outstanding bugs,
 feature requests, and rough edges. It is based on a merge of master which
 contains various fixes to issues found over the years and the v2 branch which
 contains some backwards-incompatible features like the ability to remove cron
-jobs. In addition, v3 adds support for Go Modules and cleans up rough edges like
-the timezone support.
+jobs. In addition, v3 adds support for Go Modules, cleans up rough edges like
+the timezone support, and fixes a number of bugs.
 
 New features:
+
+- Support for Go modules.
+
+- Fewer bugs:
+  - 0f01e6b parser: fix combining of Dow and Dom (#70)
+  - dbf3220 adjust times when rolling the clock forward to handle non-existent midnight (#157)
+  - eeecf15 spec_test.go: ensure an error is returned on 0 increment (#144)
+  - 70971dc cron.Entries(): update request for snapshot to include a reply channel (#97)
+
+- Standard cron spec parsing by default (first field is "minute"), with an easy
+  way to opt into the seconds field (quartz-compatible). Although, note that the
+  year field (optional in Quartz) is not supported.
 
 - Extensible, key/value logging via an interface that complies with
   the github.com/go-logr/logr project.
