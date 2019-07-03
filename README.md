@@ -16,6 +16,11 @@ It is currently IN DEVELOPMENT and will be considered released once a 3.0
 version is tagged. It is backwards INCOMPATIBLE with both the v1 and v2
 branches.
 
+New features:
+
+- Extensible, key/value logging via an interface that complies with
+  the github.com/go-logr/logr project.
+
 Updates required:
 
 - The v1 branch accepted an optional seconds field at the beginning of the cron

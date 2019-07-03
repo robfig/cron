@@ -158,6 +158,14 @@ care must be taken to ensure proper synchronization.
 All cron methods are designed to be correctly synchronized as long as the caller
 ensures that invocations have a clear happens-before ordering between them.
 
+Logging
+
+Cron defines a Logger interface that is a subset of the one defined in
+github.com/go-logr/logr. It has two logging levels (Info and Error), and
+parameters are key/value pairs. This makes it possible for cron logging to plug
+into structured logging systems. An adapter, [Verbose]PrintfLogger, is provided
+to wrap the standard library *log.Logger.
+
 Implementation
 
 Cron entries are stored in an array, sorted by their next activation time.  Cron

@@ -27,7 +27,7 @@ func TestWithPanicLogger(t *testing.T) {
 	var b bytes.Buffer
 	var logger = log.New(&b, "", log.LstdFlags)
 	c := New(WithPanicLogger(logger))
-	if c.logger != logger {
+	if c.logger.(printfLogger).logger != logger {
 		t.Error("expected provided logger")
 	}
 }
@@ -35,8 +35,8 @@ func TestWithPanicLogger(t *testing.T) {
 func TestWithVerboseLogger(t *testing.T) {
 	var buf syncWriter
 	var logger = log.New(&buf, "", log.LstdFlags)
-	c := New(WithVerboseLogger(logger))
-	if c.vlogger != logger {
+	c := New(WithLogger(VerbosePrintfLogger(logger)))
+	if c.logger.(printfLogger).logger != logger {
 		t.Error("expected provided logger")
 	}
 
@@ -45,8 +45,8 @@ func TestWithVerboseLogger(t *testing.T) {
 	time.Sleep(OneSecond)
 	c.Stop()
 	out := buf.String()
-	if !strings.Contains(out, "scheduled entry") ||
-		!strings.Contains(out, "started entry") {
+	if !strings.Contains(out, "schedule,") ||
+		!strings.Contains(out, "run,") {
 		t.Error("expected to see some actions, got:", out)
 	}
 }

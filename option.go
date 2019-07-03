@@ -33,13 +33,13 @@ func WithParser(p Parser) Option {
 // WithPanicLogger overrides the logger used for logging job panics.
 func WithPanicLogger(l *log.Logger) Option {
 	return func(c *Cron) {
-		c.logger = l
+		c.logger = PrintfLogger(l)
 	}
 }
 
-// WithVerboseLogger enables verbose logging of events that occur in cron.
-func WithVerboseLogger(logger Logger) Option {
+// WithLogger uses the provided logger.
+func WithLogger(logger Logger) Option {
 	return func(c *Cron) {
-		c.vlogger = logger
+		c.logger = logger
 	}
 }
