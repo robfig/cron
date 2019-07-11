@@ -279,6 +279,7 @@ func (c *Cron) run() {
 
 			case id := <-c.remove:
 				timer.Stop()
+				now = c.now()
 				c.removeEntry(id)
 				c.logVerbosef("removed entry %d", id)
 			}

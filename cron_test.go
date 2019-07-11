@@ -469,6 +469,56 @@ func TestJob(t *testing.T) {
 	}
 }
 
+// Issue #206
+// Ensure that the next run of a job after removing an entry is accurate.
+func TestScheduleAfterRemoval(t *testing.T) {
+	var wg1 sync.WaitGroup
+	var wg2 sync.WaitGroup
+	wg1.Add(1)
+	wg2.Add(1)
+
+	// The first time this job is run, set a timer and remove the other job
+	// 750ms later. Correct behavior would be to still run the job again in
+	// 250ms, but the bug would cause it to run instead 1s later.
+
+	var calls int
+	var mu sync.Mutex
+
+	cron := newWithSeconds()
+	hourJob := cron.Schedule(Every(time.Hour), FuncJob(func() {}))
+	cron.Schedule(Every(time.Second), FuncJob(func() {
+		mu.Lock()
+		defer mu.Unlock()
+		switch calls {
+		case 0:
+			wg1.Done()
+			calls++
+		case 1:
+			time.Sleep(750 * time.Millisecond)
+			cron.Remove(hourJob)
+			calls++
+		case 2:
+			calls++
+			wg2.Done()
+		case 3:
+			panic("unexpected 3rd call")
+		}
+	}))
+
+	cron.Start()
+	defer cron.Stop()
+
+	// the first run might be any length of time 0 - 1s, since the schedule
+	// rounds to the second. wait for the first run to true up.
+	wg1.Wait()
+
+	select {
+	case <-time.After(2 * OneSecond):
+		t.Error("expected job fires 2 times")
+	case <-wait(&wg2):
+	}
+}
+
 type ZeroSchedule struct{}
 
 func (*ZeroSchedule) Next(time.Time) time.Time {
