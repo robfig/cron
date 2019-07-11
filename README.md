@@ -3,6 +3,24 @@
 
 # cron
 
+Cron V3 has been released!
+
+To download the specific tagged release, run:
+
+	go get github.com/robfig/cron/v3@v3.0.0
+
+Import it in your program as:
+
+	import "github.com/robfig/cron/v3"
+
+It requires Go 1.11 or later due to usage of Go Modules.
+
+Refer to the documentation here:
+http://godoc.org/github.com/robfig/cron
+
+The rest of this document describes the the advances in v3 and a list of
+breaking changes for users that wish to upgrade from an earlier version.
+
 ## Upgrading to v3 (June 2019)
 
 cron v3 is a major upgrade to the library that addresses all outstanding bugs,
@@ -14,32 +32,30 @@ the timezone support, and fixes a number of bugs.
 
 New features:
 
-- Support for Go modules.
+- Support for Go modules. Callers must now import this library as
+  `github.com/robfig/cron/v3`, instead of `gopkg.in/...`
 
-- Fewer bugs:
+- Fixed bugs:
   - 0f01e6b parser: fix combining of Dow and Dom (#70)
   - dbf3220 adjust times when rolling the clock forward to handle non-existent midnight (#157)
   - eeecf15 spec_test.go: ensure an error is returned on 0 increment (#144)
   - 70971dc cron.Entries(): update request for snapshot to include a reply channel (#97)
+  - 1cba5e6 cron: fix: removing a job causes the next scheduled job to run too late (#206)
 
 - Standard cron spec parsing by default (first field is "minute"), with an easy
   way to opt into the seconds field (quartz-compatible). Although, note that the
   year field (optional in Quartz) is not supported.
 
 - Extensible, key/value logging via an interface that complies with
-  the github.com/go-logr/logr project.
+  the https://github.com/go-logr/logr project.
 
 - The new Chain & JobWrapper types allow you to install "interceptors" to add
   cross-cutting behavior like the following:
-  - Recover any panics from jobs (activated by default)
+  - Recover any panics from jobs
   - Delay a job's execution if the previous run hasn't completed yet
   - Skip a job's execution if the previous run hasn't completed yet
   - Log each job's invocations
   - Notification when jobs are completed
-
-  To avoid breaking backward compatibility, Entry.Job continues to be the value
-  that was submitted, and Entry has a new WrappedJob property which is the one
-  that is actually run.
 
 It is backwards incompatible with both v1 and v2. These updates are required:
 
@@ -59,7 +75,7 @@ It is backwards incompatible with both v1 and v2. These updates are required:
               cron.SecondOptional | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor))
 
 - The Cron type now accepts functional options on construction rather than the
-  ad-hoc behavior modification mechanisms before (setting a field, calling a setter).
+  previous ad-hoc behavior modification mechanisms (setting a field, calling a setter).
 
   UPDATING: Code that sets Cron.ErrorLogger or calls Cron.SetLocation must be
   updated to provide those values on construction.
@@ -80,6 +96,15 @@ It is backwards incompatible with both v1 and v2. These updates are required:
       cron.New(cron.WithChain(
           cron.Recover(logger),  // or use cron.DefaultLogger
       ))
+
+- In adding support for https://github.com/go-logr/logr, `cron.WithVerboseLogger` was
+  removed, since it is duplicative with the leveled logging.
+
+  UPDATING: Callers should use `WithLogger` and specify a logger that does not
+  discard `Info` logs. For convenience, one is provided that wraps `*log.Logger`:
+
+      cron.New(
+          cron.WithLogger(cron.VerbosePrintfLogger(logger)))
 
 
 ### Background - Cron spec format
