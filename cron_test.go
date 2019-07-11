@@ -297,6 +297,13 @@ func TestLocalTimezone(t *testing.T) {
 	wg.Add(2)
 
 	now := time.Now()
+	// FIX: Issue #205
+	// This calculation doesn't work in seconds 58 or 59.
+	// Take the easy way out and sleep.
+	if now.Second() >= 58 {
+		time.Sleep(2 * time.Second)
+		now = time.Now()
+	}
 	spec := fmt.Sprintf("%d,%d %d %d %d %d ?",
 		now.Second()+1, now.Second()+2, now.Minute(), now.Hour(), now.Day(), now.Month())
 
@@ -324,6 +331,13 @@ func TestNonLocalTimezone(t *testing.T) {
 	}
 
 	now := time.Now().In(loc)
+	// FIX: Issue #205
+	// This calculation doesn't work in seconds 58 or 59.
+	// Take the easy way out and sleep.
+	if now.Second() >= 58 {
+		time.Sleep(2 * time.Second)
+		now = time.Now().In(loc)
+	}
 	spec := fmt.Sprintf("%d,%d %d %d %d %d ?",
 		now.Second()+1, now.Second()+2, now.Minute(), now.Hour(), now.Day(), now.Month())
 
