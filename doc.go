@@ -49,7 +49,7 @@ implement that by creating a custom Parser as follows.
 
       cron.New(
           cron.WithParser(
-              cron.SecondOptional | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor))
+              cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor))
 
 The most popular alternative Cron expression format is Quartz:
 http://www.quartz-scheduler.org/documentation/quartz-2.x/tutorials/crontrigger.html
