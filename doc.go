@@ -1,6 +1,18 @@
 /*
 Package cron implements a cron spec parser and job runner.
 
+Installation
+
+To download the specific tagged release, run:
+
+	go get github.com/robfig/cron/v3@v3.0.0
+
+Import it in your program as:
+
+	import "github.com/robfig/cron/v3"
+
+It requires Go 1.11 or later due to usage of Go Modules.
+
 Usage
 
 Callers may register Funcs to be invoked on a given schedule.  Cron will run
