@@ -47,11 +47,18 @@ Alternative Formats
 Alternative Cron expression formats support other fields like seconds. You can
 implement that by creating a custom Parser as follows.
 
-      cron.New(
-          cron.WithParser(
-              cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor))
+	cron.New(
+		cron.WithParser(
+			cron.NewParser(
+				cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)))
 
-The most popular alternative Cron expression format is Quartz:
+Since adding Seconds is the most common modification to the standard cron spec,
+cron provides a builtin function to do that, which is equivalent to the custom
+parser you saw earlier, except that its seconds field is REQUIRED:
+
+	cron.New(cron.WithSeconds())
+
+That emulates Quartz, the most popular alternative Cron schedule format:
 http://www.quartz-scheduler.org/documentation/quartz-2.x/tutorials/crontrigger.html
 
 Special Characters
@@ -150,7 +157,7 @@ The prefix "TZ=(TIME ZONE)" is also supported for legacy compatibility.
 Be aware that jobs scheduled during daylight-savings leap-ahead transitions will
 not be run!
 
-Job Wrappers / Chain
+Job Wrappers
 
 A Cron runner may be configured with a chain of job wrappers to add
 cross-cutting functionality to all submitted jobs. For example, they may be used
