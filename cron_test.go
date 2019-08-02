@@ -477,6 +477,10 @@ func (*ZeroSchedule) Next(time.Time) time.Time {
 	return time.Time{}
 }
 
+func (*ZeroSchedule) Previous(time.Time) time.Time {
+	return time.Time{}
+}
+
 // Tests that job without time does not run
 func TestJobWithZeroTimeDoesNotRun(t *testing.T) {
 	cron := newWithSeconds()
