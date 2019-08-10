@@ -1,12 +1,14 @@
 package cron
 
 import (
+	"fmt"
 	"math/rand"
 	"testing"
 	"time"
 )
 
-func TestConstantDelayNext(t *testing.T) {
+func TestIntervalDelayNext(t *testing.T) {
+
 	tests := []struct {
 		time  string
 		delay time.Duration
@@ -45,12 +47,44 @@ func TestConstantDelayNext(t *testing.T) {
 	}
 
 	for i, c := range tests {
-		jobCostTime := time.Duration(rand.Intn(5)) * time.Second
+		jobCostTime := time.Duration(rand.Intn(10)) * time.Second
 		Schedule := Interval(c.delay)
-		actual := Schedule.Next(getTime(c.time).Add(jobCostTime))
-		expected := getTime(c.time).Add(Schedule.Delay).Add(jobCostTime)
+		nyTime := getTime(c.time)
+		actual := Schedule.Next(nyTime.Add(jobCostTime))
+		expected := nyTime.Add(Schedule.Delay).Add(jobCostTime).Truncate(time.Second)
 		if actual != expected {
 			t.Errorf("case %d : %s, \"%s\": (expected) %v != %v (actual)", i, c.time, c.delay, expected, actual)
 		}
+	}
+}
+
+func TestInterval(t *testing.T) {
+	ticker := time.Tick(time.Second * 30)
+
+	c := New()
+	err := c.AddFunc("@interval 1s", func() {
+		fmt.Println("@interval begin -> ", time.Now().Format("2006-01-02 15:04:05"))
+		sleepTime := time.Duration(rand.Intn(5)) * time.Second
+		time.Sleep(sleepTime)
+		fmt.Println("@interval finish -> ", time.Now().Format("2006-01-02 15:04:05"), "sleep seconds is ", sleepTime.Seconds())
+	})
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+	err = c.AddFunc("@every 2s", func() {
+		fmt.Println("@every 2s job is doing", time.Now().Format("2006-01-02 15:04:05"))
+	})
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	c.Start()
+
+	select {
+	case _ = <-ticker:
+		fmt.Println("all to end")
+		c.stop <- struct{}{}
 	}
 }
