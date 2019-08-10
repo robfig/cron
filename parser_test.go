@@ -179,6 +179,10 @@ func TestParse(t *testing.T) {
 			expr: "",
 			err:  "Empty spec string",
 		},
+		{
+			expr:     "@interval 5m",
+			expected: IntervalDelaySchedule{Delay: time.Duration(5) * time.Minute},
+		},
 	}
 
 	for _, c := range entries {

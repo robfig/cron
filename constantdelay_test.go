@@ -47,6 +47,7 @@ func TestIntervalDelayNext(t *testing.T) {
 	for _, c := range tests {
 		actual := Interval(c.delay).Next(getTime(c.time))
 		expected := getTime(c.expected)
+		t.Logf("actual is %s, expected is %s", actual, expected)
 		if actual != expected {
 			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.delay, expected, actual)
 		}
