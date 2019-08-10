@@ -30,6 +30,8 @@ type Schedule interface {
 	// Return the next activation time, later than the given time.
 	// Next is invoked initially, and then each time the job is run.
 	Next(time.Time) time.Time
+
+	Sync() bool
 }
 
 // Logger is a Logger interface.
@@ -117,6 +119,7 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) {
 		Schedule: schedule,
 		Job:      cmd,
 	}
+
 	if !c.running {
 		c.entries = append(c.entries, entry)
 		return
@@ -170,6 +173,20 @@ func (c *Cron) runWithRecovery(j Job) {
 	j.Run()
 }
 
+func (c *Cron) runWithRecoveryAndEntry(e *Entry) {
+	defer func() {
+		if r := recover(); r != nil {
+			const size = 64 << 10
+			buf := make([]byte, size)
+			buf = buf[:runtime.Stack(buf, false)]
+			c.logf("cron: panic running job: %v\n%s", r, buf)
+		}
+	}()
+	e.Job.Run()
+	e.Next = e.Schedule.Next(time.Now())
+	c.add <- e
+}
+
 // Run the scheduler. this is private just due to the need to synchronize
 // access to the 'running' state variable.
 func (c *Cron) run() {
@@ -197,13 +214,19 @@ func (c *Cron) run() {
 			case now = <-timer.C:
 				now = now.In(c.location)
 				// Run every entry whose next time was less than now
-				for _, e := range c.entries {
+				for i, e := range c.entries {
 					if e.Next.After(now) || e.Next.IsZero() {
 						break
 					}
-					go c.runWithRecovery(e.Job)
 					e.Prev = e.Next
-					e.Next = e.Schedule.Next(now)
+					if !e.Schedule.Sync() {
+						go c.runWithRecovery(e.Job)
+						e.Next = e.Schedule.Next(now)
+					} else {
+						e.Next = time.Time{}
+						c.entries = append(c.entries[:i], c.entries[i+1:]...)
+						go c.runWithRecoveryAndEntry(e)
+					}
 				}
 
 			case newEntry := <-c.add:

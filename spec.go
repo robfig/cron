@@ -1,6 +1,8 @@
 package cron
 
-import "time"
+import (
+	"time"
+)
 
 // SpecSchedule specifies a duty cycle (to the second granularity), based on a
 // traditional crontab specification. It is computed initially and stored as bit sets.
@@ -140,8 +142,11 @@ WRAP:
 			goto WRAP
 		}
 	}
-
 	return t
+}
+
+func (s *SpecSchedule) Sync() bool {
+	return false
 }
 
 // dayMatches returns true if the schedule's day-of-week and day-of-month

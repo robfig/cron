@@ -127,7 +127,6 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return &SpecSchedule{
 		Second: second,
 		Minute: minute,
@@ -212,7 +211,6 @@ func getRange(expr string, r bounds) (uint64, error) {
 		singleDigit      = len(lowAndHigh) == 1
 		err              error
 	)
-
 	var extra uint64
 	if lowAndHigh[0] == "*" || lowAndHigh[0] == "?" {
 		start = r.min
@@ -256,6 +254,7 @@ func getRange(expr string, r bounds) (uint64, error) {
 	if start < r.min {
 		return 0, fmt.Errorf("Beginning of range (%d) below minimum (%d): %s", start, r.min, expr)
 	}
+
 	if end > r.max {
 		return 0, fmt.Errorf("End of range (%d) above maximum (%d): %s", end, r.max, expr)
 	}
@@ -368,13 +367,19 @@ func parseDescriptor(descriptor string) (Schedule, error) {
 	}
 
 	const every = "@every "
+	const interval = "@interval "
 	if strings.HasPrefix(descriptor, every) {
 		duration, err := time.ParseDuration(descriptor[len(every):])
 		if err != nil {
 			return nil, fmt.Errorf("Failed to parse duration %s: %s", descriptor, err)
 		}
 		return Every(duration), nil
+	} else if strings.HasPrefix(descriptor, interval) {
+		duration, err := time.ParseDuration(descriptor[len(interval):])
+		if err != nil {
+			return nil, fmt.Errorf("Failed to parse duration %s: %s", descriptor, err)
+		}
+		return Interval(duration), nil
 	}
-
 	return nil, fmt.Errorf("Unrecognized descriptor: %s", descriptor)
 }
