@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-func TestIntervalDelayNext(t *testing.T) {
+func TestConstantDelayNext(t *testing.T) {
 	tests := []struct {
 		time     string
 		delay    time.Duration
