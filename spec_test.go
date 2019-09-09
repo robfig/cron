@@ -199,7 +199,7 @@ func TestNext(t *testing.T) {
 	}
 }
 
-func TestPrevious(t *testing.T) {
+func TestPrev(t *testing.T) {
 	runs := []struct {
 		time, spec string
 		expected   string
@@ -323,7 +323,7 @@ func TestPrevious(t *testing.T) {
 			t.Error(err)
 			continue
 		}
-		actual := sched.Previous(getTime(c.time))
+		actual := sched.Prev(getTime(c.time))
 		expected := getTime(c.expected)
 		if !actual.Equal(expected) {
 			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.spec, expected, actual)

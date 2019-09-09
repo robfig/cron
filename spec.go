@@ -176,9 +176,9 @@ WRAP:
 	return t.In(origLocation)
 }
 
-// Previous returns the lastest time this schedule is activated, smaller or equal with the given
+// Prev returns the lastest time this schedule is activated, smaller or equal with the given
 // time.  If no time can be found to satisfy the schedule, return the zero time.
-func (s *SpecSchedule) Previous(t time.Time) time.Time {
+func (s *SpecSchedule) Prev(t time.Time) time.Time {
 	// General approach
 	//
 	// For Month, Day, Hour, Minute, Second:

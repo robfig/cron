@@ -541,7 +541,7 @@ func (*ZeroSchedule) Next(time.Time) time.Time {
 	return time.Time{}
 }
 
-func (*ZeroSchedule) Previous(time.Time) time.Time {
+func (*ZeroSchedule) Prev(time.Time) time.Time {
 	return time.Time{}
 }
 
