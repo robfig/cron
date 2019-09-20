@@ -456,6 +456,11 @@ func TestJob(t *testing.T) {
 	cron.Start()
 	defer cron.Stop()
 
+	var actuals []string
+	for _, entry := range cron.Entries() {
+		actuals = append(actuals, entry.Job.(testJob).name)
+	}
+
 	select {
 	case <-time.After(OneSecond):
 		t.FailNow()
@@ -463,12 +468,7 @@ func TestJob(t *testing.T) {
 	}
 
 	// Ensure the entries are in the right order.
-	expecteds := []string{"job2", "job4", "job5", "job1", "job3", "job0"}
-
-	var actuals []string
-	for _, entry := range cron.Entries() {
-		actuals = append(actuals, entry.Job.(testJob).name)
-	}
+	expecteds := []string{"job0", "job2", "job4", "job5", "job1", "job3"}
 
 	for i, expected := range expecteds {
 		if actuals[i] != expected {

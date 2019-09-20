@@ -3,6 +3,7 @@ package cron
 import (
 	"container/heap"
 	"context"
+	"sort"
 	"sync"
 	"time"
 )
@@ -357,6 +358,10 @@ func (c *Cron) entrySnapshot() []Entry {
 	for i, e := range c.entries.byTime {
 		entries[i] = *e
 	}
+	less := func(i, j int) bool {
+		return entries[i].Next.Before(entries[j].Next)
+	}
+	sort.Slice(entries, less)
 	return entries
 }
 
