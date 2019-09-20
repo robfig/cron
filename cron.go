@@ -1,8 +1,8 @@
 package cron
 
 import (
+	"container/heap"
 	"context"
-	"sort"
 	"sync"
 	"time"
 )
@@ -10,8 +10,33 @@ import (
 // Cron keeps track of any number of entries, invoking the associated func as
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
+type entryHeap struct {
+	byTime
+}
+
+func (h *entryHeap) Push(x interface{}) {
+	h.byTime = append(h.byTime, x.(*Entry))
+}
+
+func (h *entryHeap) Pop() interface{} {
+	var toDel interface{}
+
+	idx := len(h.byTime) - 1
+	toDel = h.byTime[idx]
+	if idx == 0 {
+		h.byTime = []*Entry{}
+	} else {
+		h.byTime = h.byTime[:idx]
+	}
+	return toDel
+}
+
+func (h *entryHeap) Peek() *Entry {
+	return h.byTime[0]
+}
+
 type Cron struct {
-	entries   []*Entry
+	entries   *entryHeap
 	chain     Chain
 	stop      chan struct{}
 	add       chan *Entry
@@ -107,7 +132,7 @@ func (s byTime) Less(i, j int) bool {
 // See "cron.With*" to modify the default behavior.
 func New(opts ...Option) *Cron {
 	c := &Cron{
-		entries:   nil,
+		entries:   &entryHeap{nil},
 		chain:     NewChain(),
 		add:       make(chan *Entry),
 		stop:      make(chan struct{}),
@@ -161,7 +186,7 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
 		Job:        cmd,
 	}
 	if !c.running {
-		c.entries = append(c.entries, entry)
+		heap.Push(c.entries, entry)
 	} else {
 		c.add <- entry
 	}
@@ -236,22 +261,21 @@ func (c *Cron) run() {
 
 	// Figure out the next activation times for each entry.
 	now := c.now()
-	for _, entry := range c.entries {
+	for _, entry := range c.entries.byTime {
 		entry.Next = entry.Schedule.Next(now)
 		c.logger.Info("schedule", "now", now, "entry", entry.ID, "next", entry.Next)
 	}
+	heap.Init(c.entries)
 
 	for {
 		// Determine the next entry to run.
-		sort.Sort(byTime(c.entries))
-
 		var timer *time.Timer
-		if len(c.entries) == 0 || c.entries[0].Next.IsZero() {
+		if len(c.entries.byTime) == 0 || c.entries.Peek().Next.IsZero() {
 			// If there are no entries yet, just sleep - it still handles new entries
 			// and stop requests.
 			timer = time.NewTimer(100000 * time.Hour)
 		} else {
-			timer = time.NewTimer(c.entries[0].Next.Sub(now))
+			timer = time.NewTimer(c.entries.Peek().Next.Sub(now))
 		}
 
 		for {
@@ -261,10 +285,7 @@ func (c *Cron) run() {
 				c.logger.Info("wake", "now", now)
 
 				// Run every entry whose next time was less than now
-				for _, e := range c.entries {
-					if e.Next.After(now) || e.Next.IsZero() {
-						break
-					}
+				for e := c.entries.Peek(); !e.Next.IsZero() && !e.Next.After(now); heap.Fix(c.entries, 0) {
 					c.startJob(e.WrappedJob)
 					e.Prev = e.Next
 					e.Next = e.Schedule.Next(now)
@@ -275,7 +296,7 @@ func (c *Cron) run() {
 				timer.Stop()
 				now = c.now()
 				newEntry.Next = newEntry.Schedule.Next(now)
-				c.entries = append(c.entries, newEntry)
+				heap.Push(c.entries, newEntry)
 				c.logger.Info("added", "now", now, "entry", newEntry.ID, "next", newEntry.Next)
 
 			case replyChan := <-c.snapshot:
@@ -332,8 +353,8 @@ func (c *Cron) Stop() context.Context {
 
 // entrySnapshot returns a copy of the current cron entry list.
 func (c *Cron) entrySnapshot() []Entry {
-	var entries = make([]Entry, len(c.entries))
-	for i, e := range c.entries {
+	var entries = make([]Entry, len(c.entries.byTime))
+	for i, e := range c.entries.byTime {
 		entries[i] = *e
 	}
 	return entries
@@ -341,10 +362,11 @@ func (c *Cron) entrySnapshot() []Entry {
 
 func (c *Cron) removeEntry(id EntryID) {
 	var entries []*Entry
-	for _, e := range c.entries {
+	for _, e := range c.entries.byTime {
 		if e.ID != id {
 			entries = append(entries, e)
 		}
 	}
-	c.entries = entries
+	c.entries.byTime = entries
+	heap.Init(c.entries)
 }
