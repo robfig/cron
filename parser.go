@@ -419,6 +419,10 @@ func parseDescriptor(descriptor string, loc *time.Location) (Schedule, error) {
 			Location: loc,
 		}, nil
 
+	case "@eom":
+		return &EomSchedule{
+			Location: loc,
+		}, nil
 	}
 
 	const every = "@every "

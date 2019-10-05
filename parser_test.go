@@ -168,6 +168,7 @@ func TestParseSchedule(t *testing.T) {
 				Location: time.Local,
 			},
 		},
+		{secondParser, "@eom", &EomSchedule{Location: time.Local}},
 	}
 
 	for _, c := range entries {
