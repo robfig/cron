@@ -49,7 +49,7 @@ func (s *InMemoryStore) Register(entry *Entry) {
 	s.entries = append(s.entries, entry)
 }
 
-func (s InMemoryStore) Entry(id EntryID) Entry {
+func (s *InMemoryStore) Entry(id EntryID) Entry {
 	entry := s.searchEntry(id)
 	if entry == nil {
 		return Entry{}
@@ -80,7 +80,7 @@ func (s *InMemoryStore) Remove(id EntryID) {
 	}
 }
 
-func (s InMemoryStore) Snapshot() []Entry {
+func (s *InMemoryStore) Snapshot() []Entry {
 	s.mx.Lock()
 	defer s.mx.Unlock()
 
@@ -106,7 +106,7 @@ func (s *InMemoryStore) Next() (EntryID, time.Time) {
 	return next.ID, next.Next
 }
 
-func (s InMemoryStore) Ready(now time.Time) []Entry {
+func (s *InMemoryStore) Ready(now time.Time) []Entry {
 	s.mx.Lock()
 	defer s.mx.Unlock()
 
@@ -122,7 +122,7 @@ func (s InMemoryStore) Ready(now time.Time) []Entry {
 	return entries
 }
 
-func (s InMemoryStore) searchEntry(id EntryID) *Entry {
+func (s *InMemoryStore) searchEntry(id EntryID) *Entry {
 	s.mx.Lock()
 	defer s.mx.Unlock()
 
