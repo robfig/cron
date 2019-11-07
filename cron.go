@@ -3,6 +3,7 @@ package cron
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -17,12 +18,30 @@ type Cron struct {
 	stop        chan struct{}
 	done        chan struct{}
 
-	running   bool
+	running runningFlag
+
 	logger    Logger
 	location  *time.Location
 	parser    Parser
 	nextID    EntryID
 	jobWaiter sync.WaitGroup
+}
+
+type runningFlag struct {
+	// can be 1 if the Cron is running or 0 otherwise
+	flag uint32
+}
+
+func (r *runningFlag) Enabled() bool {
+	return atomic.LoadUint32(&r.flag) == 1
+}
+
+func (r *runningFlag) Enable() bool {
+	return atomic.CompareAndSwapUint32(&r.flag, 0, 1)
+}
+
+func (r *runningFlag) Disable() bool {
+	return atomic.CompareAndSwapUint32(&r.flag, 1, 0)
 }
 
 // Job is an interface for submitted cron jobs.
@@ -109,7 +128,6 @@ func New(opts ...Option) *Cron {
 		jobsChanged: make(chan struct{}),
 		stop:        make(chan struct{}),
 		done:        make(chan struct{}),
-		running:     false,
 		logger:      DefaultLogger,
 		location:    time.Local,
 		parser:      standardParser,
@@ -161,7 +179,7 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
 	c.store.Register(entry)
 	c.logger.Info("schedule", "now", "entry", entry.ID, "next", entry.Next)
 
-	if c.running {
+	if c.running.Enabled() {
 		c.jobsChanged <- struct{}{}
 	}
 
@@ -191,14 +209,14 @@ func (c *Cron) Remove(id EntryID) {
 
 // Start the cron scheduler in its own goroutine, or no-op if already started.
 func (c *Cron) Start() {
-	if compareAndSwapBool(&c.running, false, true) {
+	if c.running.Enable() {
 		go c.run()
 	}
 }
 
 // Run the cron scheduler, or no-op if already running.
 func (c *Cron) Run() {
-	if compareAndSwapBool(&c.running, false, true) {
+	if c.running.Enable() {
 		c.run()
 	}
 }
@@ -275,14 +293,14 @@ func (c *Cron) now() time.Time {
 // Stop stops the cron scheduler if it is running; otherwise it does nothing.
 // A context is returned so the caller can wait for running jobs to complete.
 func (c *Cron) Stop() context.Context {
-	if compareAndSwapBool(&c.running, true, false) {
+	if c.running.Disable() {
 		c.stop <- struct{}{}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		c.jobWaiter.Wait()
-		if c.running {
+		if c.running.Enabled() {
 			<-c.done
 		}
 
@@ -290,18 +308,4 @@ func (c *Cron) Stop() context.Context {
 	}()
 
 	return ctx
-}
-
-var boolMx sync.Mutex
-
-func compareAndSwapBool(b *bool, expected, target bool) (success bool) {
-	boolMx.Lock()
-	defer boolMx.Unlock()
-
-	if *b != expected {
-		return false
-	}
-
-	*b = target
-	return true
 }
