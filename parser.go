@@ -149,6 +149,7 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		Month:    month,
 		Dow:      dayofweek,
 		Location: loc,
+		L:        fields[3] == "L",
 	}, nil
 }
 
@@ -235,6 +236,9 @@ func ParseStandard(standardSpec string) (Schedule, error) {
 // list of "ranges".
 func getField(field string, r bounds) (uint64, error) {
 	var bits uint64
+	if r.min == 1 && r.max == 31 && field == "L" {
+		field = "28,29,30,31"
+	}
 	ranges := strings.FieldsFunc(field, func(r rune) bool { return r == ',' })
 	for _, expr := range ranges {
 		bit, err := getRange(expr, r)

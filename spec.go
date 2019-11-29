@@ -9,6 +9,9 @@ type SpecSchedule struct {
 
 	// Override location for this schedule.
 	Location *time.Location
+
+	// 'L' flag, last day of month
+	L bool
 }
 
 // bounds provides a range of acceptable values (plus a map of name to value).
@@ -177,6 +180,13 @@ WRAP:
 // dayMatches returns true if the schedule's day-of-week and day-of-month
 // restrictions are satisfied by the given time.
 func dayMatches(s *SpecSchedule, t time.Time) bool {
+	// If s.L means execute jobs at every last-day-of month,so need return immediately after this action scope
+	if s.L {
+		if isLastDay(t) && 1<<uint(t.Day())&s.Dom > 0 {
+			return true
+		}
+		return false
+	}
 	var (
 		domMatch bool = 1<<uint(t.Day())&s.Dom > 0
 		dowMatch bool = 1<<uint(t.Weekday())&s.Dow > 0
@@ -185,4 +195,38 @@ func dayMatches(s *SpecSchedule, t time.Time) bool {
 		return domMatch && dowMatch
 	}
 	return domMatch || dowMatch
+}
+
+func isLastDay(t time.Time) bool {
+	/*
+		January 31
+		February 28,29
+		March 31
+		April 30
+		May 31
+		June 30
+		July 31
+		August 31
+		September 30
+		October 31
+		November 30
+		December 31
+	*/
+	year := t.Year()
+	leapYear := false
+	if (year%4 == 0 && year%100 != 0) || year%400 == 0 {
+		leapYear = true
+	}
+
+	switch t.Month() {
+	case time.April, time.June, time.September, time.November:
+		return 30 == t.Day()
+	case time.February:
+		if leapYear {
+			return 29 == t.Day()
+		}
+		return 28 == t.Day()
+	default:
+		return 31 == t.Day()
+	}
 }
