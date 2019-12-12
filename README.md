@@ -6,13 +6,13 @@
 Cron V3 has been released!
 
 To download the specific tagged release, run:
-
-	go get github.com/robfig/cron/v3@v3.0.0
-
+```bash
+go get github.com/robfig/cron/v3@v3.0.0
+```
 Import it in your program as:
-
-	import "github.com/robfig/cron/v3"
-
+```go
+import "github.com/robfig/cron/v3"
+```
 It requires Go 1.11 or later due to usage of Go Modules.
 
 Refer to the documentation here:
@@ -65,15 +65,15 @@ It is backwards incompatible with both v1 and v2. These updates are required:
 
   UPDATING: To retain the old behavior, construct your Cron with a custom
   parser:
+```go
+// Seconds field, required
+cron.New(cron.WithSeconds())
 
-      // Seconds field, required
-      cron.New(cron.WithSeconds())
-
-      // Seconds field, optional
-      cron.New(
-          cron.WithParser(
-              cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor))
-
+// Seconds field, optional
+cron.New(
+  cron.WithParser(
+      cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor))
+```
 - The Cron type now accepts functional options on construction rather than the
   previous ad-hoc behavior modification mechanisms (setting a field, calling a setter).
 
@@ -92,20 +92,20 @@ It is backwards incompatible with both v1 and v2. These updates are required:
   has been removed to accommodate the more general JobWrapper type.
 
   UPDATING: To opt into panic recovery and configure the panic logger:
-
-      cron.New(cron.WithChain(
-          cron.Recover(logger),  // or use cron.DefaultLogger
-      ))
-
+```go
+cron.New(cron.WithChain(
+  cron.Recover(logger),  // or use cron.DefaultLogger
+))
+```
 - In adding support for https://github.com/go-logr/logr, `cron.WithVerboseLogger` was
   removed, since it is duplicative with the leveled logging.
 
   UPDATING: Callers should use `WithLogger` and specify a logger that does not
   discard `Info` logs. For convenience, one is provided that wraps `*log.Logger`:
-
-      cron.New(
-          cron.WithLogger(cron.VerbosePrintfLogger(logger)))
-
+```go
+cron.New(
+  cron.WithLogger(cron.VerbosePrintfLogger(logger)))
+```
 
 ### Background - Cron spec format
 
