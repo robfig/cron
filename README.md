@@ -118,7 +118,7 @@ There are two cron spec formats in common usage:
   jobs in Java software
 
 [the Cron wikipedia page]: https://en.wikipedia.org/wiki/Cron
-[the Quartz Scheduler]: http://www.quartz-scheduler.org/documentation/quartz-2.x/tutorials/crontrigger.html
+[the Quartz Scheduler]: http://www.quartz-scheduler.org/documentation/quartz-2.3.0/tutorials/tutorial-lesson-06.html
 
 The original version of this package included an optional "seconds" field, which
 made it incompatible with both of these formats. Now, the "standard" format is
