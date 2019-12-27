@@ -114,7 +114,7 @@ func New(opts ...Option) *Cron {
 	c := &Cron{
 		entries:   nil,
 		chain:     NewChain(),
-		add:       make(chan *Entry),
+		add:       make(chan *Entry, 10), // use chan buffer to store Entry
 		stop:      make(chan struct{}),
 		snapshot:  make(chan chan []Entry),
 		remove:    make(chan EntryID),
@@ -245,61 +245,66 @@ func (c *Cron) run() {
 		entry.Next = entry.Schedule.Next(now)
 		c.logger.Info("schedule", "now", now, "entry", entry.ID, "next", entry.Next)
 	}
+	reset := true
+	var timer *time.Timer
 
 	for {
-		// Determine the next entry to run.
-		sort.Sort(byTime(c.entries))
+		// sort entries and reset timer only At the beginning or
+		// change the entries
+		if reset {
+			// Determine the next entry to run.
+			sort.Sort(byTime(c.entries))
 
-		var timer *time.Timer
-		if len(c.entries) == 0 || c.entries[0].Next.IsZero() {
-			// If there are no entries yet, just sleep - it still handles new entries
-			// and stop requests.
-			timer = time.NewTimer(100000 * time.Hour)
-		} else {
-			timer = time.NewTimer(c.entries[0].Next.Sub(now))
+			if len(c.entries) == 0 || c.entries[0].Next.IsZero() {
+				// If there are no entries yet, just sleep - it still handles new entries
+				// and stop requests.
+				timer = time.NewTimer(100000 * time.Hour)
+			} else {
+				timer = time.NewTimer(c.entries[0].Next.Sub(now))
+			}
 		}
 
-		for {
-			select {
-			case now = <-timer.C:
-				now = now.In(c.location)
-				c.logger.Info("wake", "now", now)
+		select {
+		case now = <-timer.C:
+			now = now.In(c.location)
+			c.logger.Info("wake", "now", now)
 
-				// Run every entry whose next time was less than now
-				for _, e := range c.entries {
-					if e.Next.After(now) || e.Next.IsZero() {
-						break
-					}
-					c.startJob(e.WrappedJob)
-					e.Prev = e.Next
-					e.Next = e.Schedule.Next(now)
-					c.logger.Info("run", "now", now, "entry", e.ID, "next", e.Next)
+			// Run every entry whose next time was less than now
+			for _, e := range c.entries {
+				if e.Next.After(now) || e.Next.IsZero() {
+					break
 				}
-
-			case newEntry := <-c.add:
-				timer.Stop()
-				now = c.now()
-				newEntry.Next = newEntry.Schedule.Next(now)
-				c.entries = append(c.entries, newEntry)
-				c.logger.Info("added", "now", now, "entry", newEntry.ID, "next", newEntry.Next)
-
-			case replyChan := <-c.snapshot:
-				replyChan <- c.entrySnapshot()
-				continue
-
-			case <-c.stop:
-				timer.Stop()
-				c.logger.Info("stop")
-				return
-
-			case id := <-c.remove:
-				timer.Stop()
-				now = c.now()
-				c.removeEntry(id)
-				c.logger.Info("removed", "entry", id)
+				c.startJob(e.WrappedJob)
+				e.Prev = e.Next
+				e.Next = e.Schedule.Next(now)
+				c.logger.Info("run", "now", now, "entry", e.ID, "next", e.Next)
 			}
+			timer.Reset(c.entries[0].Next.Sub(now))
+			reset = false
 
-			break
+		case newEntry := <-c.add:
+			timer.Stop()
+			now = c.now()
+			newEntry.Next = newEntry.Schedule.Next(now)
+			c.entries = append(c.entries, newEntry)
+			c.logger.Info("added", "now", now, "entry", newEntry.ID, "next", newEntry.Next)
+			reset = true
+
+		case replyChan := <-c.snapshot:
+			replyChan <- c.entrySnapshot()
+			reset = false
+
+		case <-c.stop:
+			timer.Stop()
+			c.logger.Info("stop")
+			return
+
+		case id := <-c.remove:
+			timer.Stop()
+			now = c.now()
+			c.removeEntry(id)
+			c.logger.Info("removed", "entry", id)
+			reset = true
 		}
 	}
 }
