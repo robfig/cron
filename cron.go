@@ -114,7 +114,7 @@ func New(opts ...Option) *Cron {
 	c := &Cron{
 		entries:   nil,
 		chain:     NewChain(),
-		add:       make(chan *Entry, 10), // use chan buffer to store Entry
+		add:       make(chan *Entry),
 		stop:      make(chan struct{}),
 		snapshot:  make(chan chan []Entry),
 		remove:    make(chan EntryID),
