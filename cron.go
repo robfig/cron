@@ -14,7 +14,7 @@ import (
 // be inspected while running.
 type Cron struct {
 	entries []*Entry
-	// entriesLookupTable can be used for constant time lookup to fetch entry.
+	// entriesLookupTable can be used for constant time lookup of entries.
 	entryLookupTable map[EntryID]*Entry
 	chain            Chain
 	stop             chan struct{}
@@ -372,7 +372,7 @@ func (c *Cron) addNewEntry(entry *Entry) {
 }
 
 // removeEntry removes the entry corresponding to the given ID from the entry list as
-// we as the entryLookupTable.
+// well as the entryLookupTable.
 func (c *Cron) removeEntry(id EntryID) {
 	var entries []*Entry
 	for _, e := range c.entries {
