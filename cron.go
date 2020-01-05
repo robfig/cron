@@ -2,6 +2,8 @@ package cron
 
 import (
 	"context"
+	"fmt"
+	"github.com/pkg/errors"
 	"sort"
 	"sync"
 	"time"
@@ -11,19 +13,21 @@ import (
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
-	entries   []*Entry
-	chain     Chain
-	stop      chan struct{}
-	add       chan *Entry
-	remove    chan EntryID
-	snapshot  chan chan []Entry
-	running   bool
-	logger    Logger
-	runningMu sync.Mutex
-	location  *time.Location
-	parser    ScheduleParser
-	nextID    EntryID
-	jobWaiter sync.WaitGroup
+	entries []*Entry
+	// entriesLookupTable can be used for constant time lookup to fetch entry.
+	entryLookupTable map[EntryID]*Entry
+	chain            Chain
+	stop             chan struct{}
+	add              chan *Entry
+	remove           chan EntryID
+	snapshot         chan chan []Entry
+	running          bool
+	logger           Logger
+	runningMu        sync.Mutex
+	location         *time.Location
+	parser           ScheduleParser
+	nextID           EntryID
+	jobWaiter        sync.WaitGroup
 }
 
 // ScheduleParser is an interface for schedule spec parsers that return a Schedule
@@ -112,17 +116,18 @@ func (s byTime) Less(i, j int) bool {
 // See "cron.With*" to modify the default behavior.
 func New(opts ...Option) *Cron {
 	c := &Cron{
-		entries:   nil,
-		chain:     NewChain(),
-		add:       make(chan *Entry),
-		stop:      make(chan struct{}),
-		snapshot:  make(chan chan []Entry),
-		remove:    make(chan EntryID),
-		running:   false,
-		runningMu: sync.Mutex{},
-		logger:    DefaultLogger,
-		location:  time.Local,
-		parser:    standardParser,
+		entries:          nil,
+		entryLookupTable: make(map[EntryID]*Entry),
+		chain:            NewChain(),
+		add:              make(chan *Entry),
+		stop:             make(chan struct{}),
+		snapshot:         make(chan chan []Entry),
+		remove:           make(chan EntryID),
+		running:          false,
+		runningMu:        sync.Mutex{},
+		logger:           DefaultLogger,
+		location:         time.Local,
+		parser:           standardParser,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -166,11 +171,27 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
 		Job:        cmd,
 	}
 	if !c.running {
-		c.entries = append(c.entries, entry)
+		c.addNewEntry(entry)
 	} else {
 		c.add <- entry
 	}
 	return entry.ID
+}
+
+func (c *Cron) UpdateSchedule(id EntryID, spec string) error {
+	c.runningMu.Lock()
+	defer c.runningMu.Unlock()
+	schedule, err := c.parser.Parse(spec)
+	if err != nil {
+		return errors.Wrap(err, fmt.Sprintf("could not update schedule for job %d", id))
+	}
+	if entry, ok := c.entryLookupTable[id]; ok {
+		entry.Schedule = schedule
+		// Updating entry.Next as it might now be stale.
+		entry.Next = entry.Schedule.Next(c.now())
+		return nil
+	}
+	return errors.New(fmt.Sprintf("invalid ID provided: %d", id))
 }
 
 // Entries returns a snapshot of the cron entries.
@@ -280,7 +301,7 @@ func (c *Cron) run() {
 				timer.Stop()
 				now = c.now()
 				newEntry.Next = newEntry.Schedule.Next(now)
-				c.entries = append(c.entries, newEntry)
+				c.addNewEntry(newEntry)
 				c.logger.Info("added", "now", now, "entry", newEntry.ID, "next", newEntry.Next)
 
 			case replyChan := <-c.snapshot:
@@ -344,6 +365,14 @@ func (c *Cron) entrySnapshot() []Entry {
 	return entries
 }
 
+// addNewEntry adds an entry to the current cron entry list and the entryLookupTable.
+func (c *Cron) addNewEntry(entry *Entry) {
+	c.entries = append(c.entries, entry)
+	c.entryLookupTable[entry.ID] = entry
+}
+
+// removeEntry removes the entry corresponding to the given ID from the entry list as
+// we as the entryLookupTable.
 func (c *Cron) removeEntry(id EntryID) {
 	var entries []*Entry
 	for _, e := range c.entries {
@@ -352,4 +381,5 @@ func (c *Cron) removeEntry(id EntryID) {
 		}
 	}
 	c.entries = entries
+	delete(c.entryLookupTable, id)
 }

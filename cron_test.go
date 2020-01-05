@@ -3,6 +3,7 @@ package cron
 import (
 	"bytes"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"log"
 	"strings"
 	"sync"
@@ -676,6 +677,56 @@ func TestMultiThreadedStartAndStop(t *testing.T) {
 	go cron.Run()
 	time.Sleep(2 * time.Millisecond)
 	cron.Stop()
+}
+
+func TestCron_UpdateSchedule(t *testing.T) {
+	oldSpec := "?/10 * * * * *"
+	newSpec := "?/5 * * * * *"
+
+	checkIntervals := func(interval1 time.Duration, interval2 time.Duration, factor float64) {
+		assert.Equal(t, interval1.Seconds(), interval2.Seconds()*factor)
+	}
+
+	executionInterval := func(entry Entry) time.Duration {
+		// To get a more accurate measurement of the execution interval, finding the time
+		// difference between the next execution time and the one that follows.
+		next := entry.Next
+		return entry.Schedule.Next(next).Sub(next)
+	}
+
+	t.Run("updating schedule without starting cron job", func(t *testing.T) {
+		cron := New(WithSeconds())
+		id, err := cron.AddFunc(oldSpec, func() {})
+		assert.NoError(t, err)
+		executionIntervalOldSpec := executionInterval(cron.Entries()[0])
+
+		// Updating schedule to the new spec.
+		assert.NoError(t, cron.UpdateSchedule(id, newSpec))
+		executionIntervalNewSpec := executionInterval(cron.Entries()[0])
+
+		checkIntervals(executionIntervalOldSpec, executionIntervalNewSpec, 2)
+	})
+
+	t.Run("updating schedule while the cron job is running", func(t *testing.T) {
+		cron := New(WithSeconds())
+		id, err := cron.AddFunc(oldSpec, func() {})
+		assert.NoError(t, err)
+		cron.Start()
+
+		executionIntervalOldSpec := executionInterval(cron.Entries()[0])
+
+		// Updating schedule to the new spec after 1 second.
+		ticker := time.NewTicker(1 * time.Second)
+		select {
+		case <-ticker.C:
+			assert.NoError(t, cron.UpdateSchedule(id, newSpec))
+		}
+		executionIntervalNewSpec := executionInterval(cron.Entries()[0])
+
+		checkIntervals(executionIntervalOldSpec, executionIntervalNewSpec, 2)
+
+		cron.Stop()
+	})
 }
 
 func wait(wg *sync.WaitGroup) chan bool {
