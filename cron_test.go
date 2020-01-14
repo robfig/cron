@@ -718,7 +718,7 @@ func TestCron_UpdateSchedule(t *testing.T) {
 
 	testScheduleUpdateAfterStartingCronJob := func(usingSpecString bool) {
 		oldSpec := "?/50 * * * * *"
-		newSpec := "?/1 * * * * *"
+		newSpec := "?/5 * * * * *"
 
 		cron := New(WithSeconds())
 		executionCounterOldSpec := int64(0)
@@ -739,6 +739,9 @@ func TestCron_UpdateSchedule(t *testing.T) {
 
 		select {
 		case <-time.After(5 * time.Second):
+			// Notifying the job to increment executionCounterNewSpec.
+			close(updated)
+
 			if usingSpecString {
 				// Updating schedule.
 				checkNoError(cron.UpdateScheduleWithSpec(id, newSpec))
@@ -749,12 +752,9 @@ func TestCron_UpdateSchedule(t *testing.T) {
 			}
 		}
 
-		// Notifying the job to increment executionCounterNewSpec.
-		close(updated)
-
 		// Allow at least 1 execution of the job.
 		select {
-		case <-time.After(5 * time.Second):
+		case <-time.After(10 * time.Second):
 			cron.Stop()
 		}
 
