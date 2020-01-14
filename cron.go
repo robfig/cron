@@ -278,7 +278,7 @@ func (c *Cron) Run() {
 	c.run()
 }
 
-// durationToEarliestExecution returns the time remaining until the first
+// timeTillEarliestEntry returns the time remaining until the first
 // execution of the earliest entry to run.
 func (c *Cron) timeTillEarliestEntry(now time.Time) time.Duration {
 	// Determine the next entry to run.
