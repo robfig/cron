@@ -2,8 +2,8 @@ package cron
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/pkg/errors"
 	"sort"
 	"sync"
 	"time"
@@ -13,21 +13,27 @@ import (
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
-	entries []*Entry
-	// entriesLookupTable can be used for constant time lookup of entries.
-	entryLookupTable map[EntryID]*Entry
-	chain            Chain
-	stop             chan struct{}
-	add              chan *Entry
-	remove           chan EntryID
-	snapshot         chan chan []Entry
-	running          bool
-	logger           Logger
-	runningMu        sync.Mutex
-	location         *time.Location
-	parser           ScheduleParser
-	nextID           EntryID
-	jobWaiter        sync.WaitGroup
+	entries        []*Entry
+	chain          Chain
+	stop           chan struct{}
+	add            chan *Entry
+	remove         chan EntryID
+	scheduleUpdate chan scheduleUpdateInfo
+	snapshot       chan chan []Entry
+	running        bool
+	logger         Logger
+	runningMu      sync.Mutex
+	location       *time.Location
+	parser         ScheduleParser
+	nextID         EntryID
+	jobWaiter      sync.WaitGroup
+}
+
+// scheduleUpdateInfo encapsulates the information required to update the
+// schedule of a job.
+type scheduleUpdateInfo struct {
+	id       EntryID
+	schedule Schedule
 }
 
 // ScheduleParser is an interface for schedule spec parsers that return a Schedule
@@ -116,18 +122,18 @@ func (s byTime) Less(i, j int) bool {
 // See "cron.With*" to modify the default behavior.
 func New(opts ...Option) *Cron {
 	c := &Cron{
-		entries:          nil,
-		entryLookupTable: make(map[EntryID]*Entry),
-		chain:            NewChain(),
-		add:              make(chan *Entry),
-		stop:             make(chan struct{}),
-		snapshot:         make(chan chan []Entry),
-		remove:           make(chan EntryID),
-		running:          false,
-		runningMu:        sync.Mutex{},
-		logger:           DefaultLogger,
-		location:         time.Local,
-		parser:           standardParser,
+		entries:        nil,
+		chain:          NewChain(),
+		add:            make(chan *Entry),
+		stop:           make(chan struct{}),
+		snapshot:       make(chan chan []Entry),
+		remove:         make(chan EntryID),
+		scheduleUpdate: make(chan scheduleUpdateInfo),
+		running:        false,
+		runningMu:      sync.Mutex{},
+		logger:         DefaultLogger,
+		location:       time.Local,
+		parser:         standardParser,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -171,25 +177,42 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
 		Job:        cmd,
 	}
 	if !c.running {
-		c.addNewEntry(entry)
+		c.entries = append(c.entries, entry)
 	} else {
 		c.add <- entry
 	}
 	return entry.ID
 }
 
-func (c *Cron) UpdateSchedule(id EntryID, spec string) error {
-	c.runningMu.Lock()
-	defer c.runningMu.Unlock()
+// UpdateScheduleWithSpec updates the schedule of the job, corresponding to the given id,
+// with the provided spec string.
+func (c *Cron) UpdateScheduleWithSpec(id EntryID, spec string) error {
 	schedule, err := c.parser.Parse(spec)
 	if err != nil {
-		return errors.Wrap(err, fmt.Sprintf("could not update schedule for job %d", id))
+		return errors.New(fmt.Sprint("could not update schedule for job: ", err))
 	}
-	if entry, ok := c.entryLookupTable[id]; ok {
-		entry.Schedule = schedule
-		// Updating entry.Next as it might now be stale.
-		entry.Next = entry.Schedule.Next(c.now())
-		return nil
+	return c.UpdateSchedule(id, schedule)
+}
+
+// UpdateSchedule updates the schedule of a job, corresponding to the given id,
+// with the provided schedule.
+func (c *Cron) UpdateSchedule(id EntryID, schedule Schedule) error {
+	c.runningMu.Lock()
+	defer c.runningMu.Unlock()
+	for _, entry := range c.entries {
+		if entry.ID == id {
+			if c.running {
+				c.scheduleUpdate <- scheduleUpdateInfo{
+					id:       id,
+					schedule: schedule,
+				}
+			} else {
+				entry.Schedule = schedule
+				// Updating entry.Next as it might now be stale.
+				entry.Next = entry.Schedule.Next(c.now())
+			}
+			return nil
+		}
 	}
 	return errors.New(fmt.Sprintf("invalid ID provided: %d", id))
 }
@@ -255,6 +278,20 @@ func (c *Cron) Run() {
 	c.run()
 }
 
+// durationToEarliestExecution returns the time remaining until the first
+// execution of the earliest entry to run.
+func (c *Cron) timeTillEarliestEntry(now time.Time) time.Duration {
+	// Determine the next entry to run.
+	sort.Sort(byTime(c.entries))
+
+	if len(c.entries) == 0 || c.entries[0].Next.IsZero() {
+		// If there are no entries yet, just sleep - it still handles new entries
+		// and stop requests.
+		return 100000 * time.Hour
+	}
+	return c.entries[0].Next.Sub(now)
+}
+
 // run the scheduler.. this is private just due to the need to synchronize
 // access to the 'running' state variable.
 func (c *Cron) run() {
@@ -268,17 +305,8 @@ func (c *Cron) run() {
 	}
 
 	for {
-		// Determine the next entry to run.
-		sort.Sort(byTime(c.entries))
-
-		var timer *time.Timer
-		if len(c.entries) == 0 || c.entries[0].Next.IsZero() {
-			// If there are no entries yet, just sleep - it still handles new entries
-			// and stop requests.
-			timer = time.NewTimer(100000 * time.Hour)
-		} else {
-			timer = time.NewTimer(c.entries[0].Next.Sub(now))
-		}
+		// timer to timeout when it is time for the next entry to run.
+		timer := time.NewTimer(c.timeTillEarliestEntry(now))
 
 		for {
 			select {
@@ -301,7 +329,7 @@ func (c *Cron) run() {
 				timer.Stop()
 				now = c.now()
 				newEntry.Next = newEntry.Schedule.Next(now)
-				c.addNewEntry(newEntry)
+				c.entries = append(c.entries, newEntry)
 				c.logger.Info("added", "now", now, "entry", newEntry.ID, "next", newEntry.Next)
 
 			case replyChan := <-c.snapshot:
@@ -318,6 +346,25 @@ func (c *Cron) run() {
 				now = c.now()
 				c.removeEntry(id)
 				c.logger.Info("removed", "entry", id)
+
+			case newScheduleUpdateInfo := <-c.scheduleUpdate:
+				now = c.now()
+				// Update the next execution time of the entry using the updated schedule.
+				scheduleUpdated := false
+				for _, e := range c.entries {
+					if e.ID == newScheduleUpdateInfo.id {
+						e.Schedule = newScheduleUpdateInfo.schedule
+						e.Next = e.Schedule.Next(now)
+						scheduleUpdated = true
+						break
+					}
+				}
+
+				// entries[0] might no longer correspond to the next entry to run.
+				// Reinitialize the timer.
+				if scheduleUpdated {
+					timer = time.NewTimer(c.timeTillEarliestEntry(now))
+				}
 			}
 
 			break
@@ -365,12 +412,6 @@ func (c *Cron) entrySnapshot() []Entry {
 	return entries
 }
 
-// addNewEntry adds an entry to the current cron entry list and the entryLookupTable.
-func (c *Cron) addNewEntry(entry *Entry) {
-	c.entries = append(c.entries, entry)
-	c.entryLookupTable[entry.ID] = entry
-}
-
 // removeEntry removes the entry corresponding to the given ID from the entry list as
 // well as the entryLookupTable.
 func (c *Cron) removeEntry(id EntryID) {
@@ -381,5 +422,4 @@ func (c *Cron) removeEntry(id EntryID) {
 		}
 	}
 	c.entries = entries
-	delete(c.entryLookupTable, id)
 }

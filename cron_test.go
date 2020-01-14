@@ -3,7 +3,6 @@ package cron
 import (
 	"bytes"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"log"
 	"strings"
 	"sync"
@@ -680,13 +679,6 @@ func TestMultiThreadedStartAndStop(t *testing.T) {
 }
 
 func TestCron_UpdateSchedule(t *testing.T) {
-	oldSpec := "?/10 * * * * *"
-	newSpec := "?/5 * * * * *"
-
-	checkIntervals := func(interval1 time.Duration, interval2 time.Duration, factor float64) {
-		assert.Equal(t, interval1.Seconds(), interval2.Seconds()*factor)
-	}
-
 	executionInterval := func(entry Entry) time.Duration {
 		// To get a more accurate measurement of the execution interval, finding the time
 		// difference between the next execution time and the one that follows.
@@ -694,39 +686,111 @@ func TestCron_UpdateSchedule(t *testing.T) {
 		return entry.Schedule.Next(next).Sub(next)
 	}
 
-	t.Run("updating schedule without starting cron job", func(t *testing.T) {
+	checkNoError := func(err error) {
+		if err != nil {
+			t.Error(err)
+		}
+	}
+
+	testScheduleUpdateBeforeStartingCronJob := func(usingSpecString bool) {
+		oldSpec := "?/10 * * * * *"
+		newSpec := "?/5 * * * * *"
+
 		cron := New(WithSeconds())
 		id, err := cron.AddFunc(oldSpec, func() {})
-		assert.NoError(t, err)
+		checkNoError(err)
 		executionIntervalOldSpec := executionInterval(cron.Entries()[0])
 
-		// Updating schedule to the new spec.
-		assert.NoError(t, cron.UpdateSchedule(id, newSpec))
-		executionIntervalNewSpec := executionInterval(cron.Entries()[0])
-
-		checkIntervals(executionIntervalOldSpec, executionIntervalNewSpec, 2)
-	})
-
-	t.Run("updating schedule while the cron job is running", func(t *testing.T) {
-		cron := New(WithSeconds())
-		id, err := cron.AddFunc(oldSpec, func() {})
-		assert.NoError(t, err)
-		cron.Start()
-
-		executionIntervalOldSpec := executionInterval(cron.Entries()[0])
-
-		// Updating schedule to the new spec after 1 second.
-		ticker := time.NewTicker(1 * time.Second)
-		select {
-		case <-ticker.C:
-			assert.NoError(t, cron.UpdateSchedule(id, newSpec))
+		// Updating schedule.
+		if usingSpecString {
+			checkNoError(cron.UpdateScheduleWithSpec(id, newSpec))
+		} else {
+			newSpecSchedule, err := cron.parser.Parse(newSpec)
+			checkNoError(err)
+			checkNoError(cron.UpdateSchedule(id, newSpecSchedule))
 		}
 		executionIntervalNewSpec := executionInterval(cron.Entries()[0])
 
-		checkIntervals(executionIntervalOldSpec, executionIntervalNewSpec, 2)
+		if executionIntervalOldSpec.Seconds() != (executionIntervalNewSpec.Seconds() * 2) {
+			t.Fatal("failed to update schedule")
+		}
+	}
 
-		cron.Stop()
+	testScheduleUpdateAfterStartingCronJob := func(usingSpecString bool) {
+		oldSpec := "?/50 * * * * *"
+		newSpec := "?/1 * * * * *"
+
+		cron := New(WithSeconds())
+		executionCounterOldSpec := int64(0)
+		executionCounterNewSpec := int64(0)
+		updated := make(chan struct{})
+
+		id, err := cron.AddFunc(oldSpec, func() {
+			select {
+			case <-updated:
+				atomic.AddInt64(&executionCounterNewSpec, 1)
+			default:
+				atomic.AddInt64(&executionCounterOldSpec, 1)
+			}
+		})
+
+		checkNoError(err)
+		cron.Start()
+
+		select {
+		case <-time.After(5 * time.Second):
+			if usingSpecString {
+				// Updating schedule.
+				checkNoError(cron.UpdateScheduleWithSpec(id, newSpec))
+			} else {
+				newSpecSchedule, err := cron.parser.Parse(newSpec)
+				checkNoError(err)
+				checkNoError(cron.UpdateSchedule(id, newSpecSchedule))
+			}
+		}
+
+		// Notifying the job to increment executionCounterNewSpec.
+		close(updated)
+
+		// Allow at least 1 execution of the job.
+		select {
+		case <-time.After(5 * time.Second):
+			cron.Stop()
+		}
+
+		// Given the old schedule (old spec), the job should not have executed
+		// at all.
+		if atomic.LoadInt64(&executionCounterOldSpec) != 0 {
+			t.Fatal("job ran sooner than it was supposed to")
+		}
+
+		// With the updated schedule (new spec), the job should have executed
+		// at least once.
+		if atomic.LoadInt64(&executionCounterNewSpec) < 1 {
+			t.Fatal("failed to update schedule for job")
+		}
+	}
+
+	t.Run("updating schedule before starting cron job", func(t *testing.T) {
+		t.Run("providing spec string", func(t *testing.T) {
+			testScheduleUpdateBeforeStartingCronJob(true)
+		})
+
+		t.Run("providing schedule", func(t *testing.T) {
+			testScheduleUpdateBeforeStartingCronJob(false)
+		})
 	})
+
+	t.Run("updating schedule after starting cron job", func(t *testing.T) {
+		t.Run("providing spec string", func(t *testing.T) {
+			testScheduleUpdateAfterStartingCronJob(true)
+		})
+
+		t.Run("providing schedule", func(t *testing.T) {
+			testScheduleUpdateAfterStartingCronJob(false)
+		})
+	})
+
 }
 
 func wait(wg *sync.WaitGroup) chan bool {
