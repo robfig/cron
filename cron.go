@@ -278,7 +278,7 @@ func (c *Cron) Run() {
 	c.run()
 }
 
-// durationToEarliestExecution returns the time remaining until the first
+// timeTillEarliestEntry returns the time remaining until the first
 // execution of the earliest entry to run.
 func (c *Cron) timeTillEarliestEntry(now time.Time) time.Duration {
 	// Determine the next entry to run.
@@ -412,8 +412,7 @@ func (c *Cron) entrySnapshot() []Entry {
 	return entries
 }
 
-// removeEntry removes the entry corresponding to the given ID from the entry list as
-// well as the entryLookupTable.
+// removeEntry removes the entry corresponding to the given ID from the entry list.
 func (c *Cron) removeEntry(id EntryID) {
 	var entries []*Entry
 	for _, e := range c.entries {
