@@ -1,6 +1,8 @@
 package cron
 
-import "time"
+import (
+	"time"
+)
 
 // SpecSchedule specifies a duty cycle (to the second granularity), based on a
 // traditional crontab specification. It is computed initially and stored as bit sets.
@@ -10,8 +12,14 @@ type SpecSchedule struct {
 	// Override location for this schedule.
 	Location *time.Location
 
-	// 'L' flag, last day of month
-	L bool
+	// Extra
+	Extra Extra
+}
+
+// Extra attributes
+type Extra struct {
+	DayOfWeek uint // that N:0 - 6
+	L         bool
 }
 
 // bounds provides a range of acceptable values (plus a map of name to value).
@@ -180,9 +188,12 @@ WRAP:
 // dayMatches returns true if the schedule's day-of-week and day-of-month
 // restrictions are satisfied by the given time.
 func dayMatches(s *SpecSchedule, t time.Time) bool {
-	// If s.L means execute jobs at every last-day-of month,so need return immediately after this action scope
-	if s.L {
+	// If s.Extra.L means execute jobs at every last-day-of month,so need return immediately after this action scope
+	if s.Extra.L {
 		if isLastDay(t) && 1<<uint(t.Day())&s.Dom > 0 {
+			return true
+		}
+		if isNLastDayOfGivenMonth(t, s.Extra.DayOfWeek) {
 			return true
 		}
 		return false
@@ -197,6 +208,54 @@ func dayMatches(s *SpecSchedule, t time.Time) bool {
 	return domMatch || dowMatch
 }
 
+func matchNL(allday int, t time.Time, n uint) bool {
+	// is or not the last week of this month
+	if allday-t.Day() > 6 {
+		return false
+	}
+	switch t.Weekday() {
+	case time.Sunday:
+		return n == 0
+	case time.Monday:
+		return n == 1
+	case time.Tuesday:
+		return n == 2
+	case time.Wednesday:
+		return n == 3
+	case time.Thursday:
+		return n == 4
+	case time.Friday:
+		return n == 5
+	case time.Saturday:
+		return n == 6
+	default:
+		return false
+	}
+}
+
+// is or not the last day 'NL'of a given month
+func isNLastDayOfGivenMonth(t time.Time, nl uint) bool {
+	year := t.Year()
+	leapYear := false
+	if (year%4 == 0 && year%100 != 0) || year%400 == 0 {
+		leapYear = true
+	}
+
+	switch t.Month() {
+	case time.April, time.June, time.September, time.November:
+		return matchNL(30, t, nl)
+	case time.February:
+		if leapYear {
+			return matchNL(29, t, nl)
+		}
+		return matchNL(28, t, nl)
+	default:
+		return matchNL(31, t, nl)
+	}
+	return false
+}
+
+// is or not the last day of month in this given t
 func isLastDay(t time.Time) bool {
 	/*
 		January 31
