@@ -315,7 +315,7 @@ func (c *Cron) startJob(j Job) {
 
 // now returns current time in c location
 func (c *Cron) now() time.Time {
-	return time.Now().In(c.location)
+	return time.Now().Round(0).In(c.location)
 }
 
 // Stop stops the cron scheduler if it is running; otherwise it does nothing.
