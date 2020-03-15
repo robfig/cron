@@ -379,7 +379,7 @@ func (c *Cron) removeEntry(id EntryID) {
 // Run cares about only it's entry 
 // and doesn't worry about all the entries
 // and doesn't care of sorting. 
-func (c *Cron) Run(e Entry){
+func (c *Cron) RunJob(e Entry){
 	for {
 		select {
 			case: time.Timer(e.Next)
