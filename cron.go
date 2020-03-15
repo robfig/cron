@@ -69,6 +69,9 @@ type Entry struct {
 	// It is kept around so that user code that needs to get at the job later,
 	// e.g. via Entries() can do so.
 	Job Job
+
+	// stop channel for this entry
+	stop chan struct{}
 }
 
 // Valid returns true if this is not the zero entry.
@@ -139,7 +142,13 @@ func (f FuncJob) Run() { f() }
 // The spec is parsed using the time zone of this Cron instance as the default.
 // An opaque ID is returned that can be used to later remove it.
 func (c *Cron) AddFunc(spec string, cmd func()) (EntryID, error) {
-	return c.AddJob(spec, FuncJob(cmd))
+	// add to entries
+	e, _ := c.AddJob(spec, FuncJob(cmd))
+
+	// run the entry in seperate go routine
+	go c.RunJob(e)
+
+	return e, nil
 }
 
 // AddJob adds a Job to the Cron to be run on the given schedule.
@@ -164,6 +173,7 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
 		Schedule:   schedule,
 		WrappedJob: c.chain.Then(cmd),
 		Job:        cmd,
+		stop:       make(chan struct{}),
 	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
@@ -204,11 +214,14 @@ func (c *Cron) Entry(id EntryID) Entry {
 func (c *Cron) Remove(id EntryID) {
 	c.runningMu.Lock()
 	defer c.runningMu.Unlock()
+	// stop the running job
 	if c.running {
-		c.remove <- id
-	} else {
-		c.removeEntry(id)
+		// c.remove <- id
+		c.Entries[id].stop <- struct{}{}
 	}
+    // remove the job from entry 
+	// delete that ID from the entries.
+	c.removeEntry(id)
 }
 
 // Start the cron scheduler in its own goroutine, or no-op if already started.
@@ -323,21 +336,30 @@ func (c *Cron) now() time.Time {
 func (c *Cron) Stop() context.Context {
 	c.runningMu.Lock()
 	defer c.runningMu.Unlock()
-	if c.running {
-		c.stop <- struct{}{}
-		c.running = false
+	// send signal to each go routine to stop 
+	for _, entry := range c.Entries {
+		entry.Stop <- struct{}{}
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		c.jobWaiter.Wait()
-		cancel()
-	}()
+
+	// empty the entries 
+	s.Entries=[]Entry
+
+	// if c.running {
+	// 	c.stop <- struct{}{}
+	// 	c.running = false
+	// }
+	// ctx, cancel := context.WithCancel(context.Background())
+	// go func() {
+	// 	c.jobWaiter.Wait()
+	// 	cancel()
+	// }()
 	return ctx
 }
 
 // entrySnapshot returns a copy of the current cron entry list.
 func (c *Cron) entrySnapshot() []Entry {
 	var entries = make([]Entry, len(c.entries))
+	// snapshot would remain same 
 	for i, e := range c.entries {
 		entries[i] = *e
 	}
@@ -352,4 +374,19 @@ func (c *Cron) removeEntry(id EntryID) {
 		}
 	}
 	c.entries = entries
+}
+
+// Run cares about only it's entry 
+// and doesn't worry about all the entries
+// and doesn't care of sorting. 
+func (c *Cron) Run(e Entry){
+	for {
+		select {
+			case: time.Timer(e.Next)
+				// do the job 
+				// update the next timer 
+			case: <-c.Stop
+				// TIME TO DIE
+			}
+	}
 }
