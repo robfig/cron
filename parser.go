@@ -61,11 +61,11 @@ type Parser struct {
 //  sched, err := specParser.Parse("0 0 15 */3 *")
 //
 //  // Same as above, just excludes time fields
-//  subsParser := NewParser(Dom | Month | Dow)
+//  specParser := NewParser(Dom | Month | Dow)
 //  sched, err := specParser.Parse("15 */3 *")
 //
 //  // Same as above, just makes Dow optional
-//  subsParser := NewParser(Dom | Month | DowOptional)
+//  specParser := NewParser(Dom | Month | DowOptional)
 //  sched, err := specParser.Parse("15 */3")
 //
 func NewParser(options ParseOption) Parser {
