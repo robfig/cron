@@ -26,7 +26,7 @@ func (schedule ConstantDelaySchedule) Next(t time.Time) time.Time {
 	return t.Add(schedule.Delay - time.Duration(t.Nanosecond())*time.Nanosecond)
 }
 
-// Previous returns the last time this should have been be run.
+// Previous returns the last time this should have been run.
 // This rounds so that the previous activation time will be on the last second.
 func (schedule ConstantDelaySchedule) Previous(t time.Time) time.Time {
 	return t.Add(-schedule.Delay + time.Duration(t.Nanosecond())*time.Nanosecond)
