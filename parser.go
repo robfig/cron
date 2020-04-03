@@ -135,11 +135,10 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		hour       = field(fields[2], hours)
 		dayofmonth = field(fields[3], dom, fields[5])
 		month      = field(fields[4], months)
-		dayofweek  = field(fields[5], dow)
 	)
 
 	matchDayofWeek := matchLastDayOfGivenMonth(fields[5])
-	dayofweek = func() uint64 {
+	dayofweek := func() uint64 {
 		if matchDayofWeek {
 			return 0
 		}
