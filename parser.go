@@ -135,7 +135,6 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		hour       = field(fields[2], hours)
 		dayofmonth = field(fields[3], dom, fields[5])
 		month      = field(fields[4], months)
-		// dayofweek  = field(fields[5], dow)
 	)
 
 	matchDayofWeek := matchLastDayOfGivenMonth(fields[5])
@@ -144,7 +143,7 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 			return 0
 		}
 		return field(fields[5], dow)
-	}
+	}()
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +154,7 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		Hour:     hour,
 		Dom:      dayofmonth,
 		Month:    month,
-		Dow:      dayofweek(),
+		Dow:      dayofweek,
 		Location: loc,
 		Extra: Extra{
 			L:         fields[3] == "L" || matchDayofWeek,
