@@ -209,6 +209,7 @@ func TestErrors(t *testing.T) {
 		"0 0 * * XYZ",
 		"0 0 * * XYL",
 		"0 0 * * 12L",
+		"0 0 * * 8L",
 	}
 	for _, spec := range invalidSpecs {
 		_, err := ParseStandard(spec)
