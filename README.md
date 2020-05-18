@@ -70,9 +70,9 @@ It is backwards incompatible with both v1 and v2. These updates are required:
 cron.New(cron.WithSeconds())
 
 // Seconds field, optional
-cron.New(
-  cron.WithParser(
-      cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor))
+cron.New(cron.WithParser(cron.NewParser(
+	cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
+)))
 ```
 - The Cron type now accepts functional options on construction rather than the
   previous ad-hoc behavior modification mechanisms (setting a field, calling a setter).
