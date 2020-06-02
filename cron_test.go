@@ -541,6 +541,10 @@ func (*ZeroSchedule) Next(time.Time) time.Time {
 	return time.Time{}
 }
 
+func (*ZeroSchedule) IsOnce() bool {
+	return false
+}
+
 // Tests that job without time does not run
 func TestJobWithZeroTimeDoesNotRun(t *testing.T) {
 	cron := newWithSeconds()
