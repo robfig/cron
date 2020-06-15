@@ -121,11 +121,11 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 	}
 
 	field := func(field string, r bounds) uint64 {
-		var bits uint64
-		bits, err = getField(field, r)
 		if err != nil {
 			return 0
 		}
+		var bits uint64
+		bits, err = getField(field, r)
 		return bits
 	}
 
@@ -136,6 +136,9 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		dayOfMonth = field(fields[3], dom)
 		month      = field(fields[4], months)
 	)
+	if err != nil {
+		return nil, err
+	}
 	dayNum, weekNumInt, isLastWeek, ok := dowInNthWeekFormat(fields[5])
 	dayOfWeek := func() uint64 {
 		if ok {
