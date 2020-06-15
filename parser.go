@@ -121,11 +121,11 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 	}
 
 	field := func(field string, r bounds) uint64 {
+		var bits uint64
+		bits, err = getField(field, r)
 		if err != nil {
 			return 0
 		}
-		var bits uint64
-		bits, err = getField(field, r)
 		return bits
 	}
 
@@ -133,23 +133,56 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		second     = field(fields[0], seconds)
 		minute     = field(fields[1], minutes)
 		hour       = field(fields[2], hours)
-		dayofmonth = field(fields[3], dom)
+		dayOfMonth = field(fields[3], dom)
 		month      = field(fields[4], months)
-		dayofweek  = field(fields[5], dow)
 	)
-	if err != nil {
-		return nil, err
-	}
+	dayNum, weekNumInt, isLastWeek, ok := dowInNthWeekFormat(fields[5])
+	dayOfWeek := func() uint64 {
+		if ok {
+			return 0
+		}
+		return field(fields[5], dow)
+	}()
 
 	return &SpecSchedule{
 		Second:   second,
 		Minute:   minute,
 		Hour:     hour,
-		Dom:      dayofmonth,
+		Dom:      dayOfMonth,
 		Month:    month,
-		Dow:      dayofweek,
+		Dow:      dayOfWeek,
 		Location: loc,
+		Extra: Extra{
+			DayOfWeek:  dayNum,
+			WeekNumber: weekNumInt,
+			LastWeek:   isLastWeek,
+			Valid:      ok,
+		},
 	}, nil
+}
+
+func dowInNthWeekFormat(spec string) (uint8, uint8, bool, bool) {
+	var dayOfWeek uint8 = 0
+	var weekNumber uint8 = 0
+	if len(spec) != 3 {
+		return 0, 0, false, false
+	}
+	day := spec[0:1]
+	if day >= "0" && day <= "6" {
+		dayOfWeek = day[0] - '0'
+	} else {
+		return 0, 0, false, false
+	}
+
+	week := spec[2:]
+	if week >= "1" && week <= "4" {
+		weekNumber = week[0] - '0'
+	} else if week == "L" {
+		return dayOfWeek, 0, true, true
+	} else {
+		return 0, 0, false, false
+	}
+	return dayOfWeek, weekNumber, false, true
 }
 
 // normalizeFields takes a subset set of the time fields and returns the full set
