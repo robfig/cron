@@ -9,16 +9,16 @@ type SpecSchedule struct {
 
 	// Override location for this schedule.
 	Location *time.Location
-	// Extra
+	// Extra for nth Day of the Week
 	Extra Extra
 }
 
-// Extra attributes
+// Extra attributes is currently storing the spec config for nth Day of the Week
 type Extra struct {
-	DayOfWeek  uint8 // that N:0 - 6
-	WeekNumber uint8 // Week of the month
-	LastWeek   bool  // if that's a last week
-	Valid      bool
+	DayOfWeek  uint8 // 0 - 6, same as, time.Weekday
+	WeekNumber uint8 // Week of the month, value ranges from 1 - 4
+	LastWeek   bool  // true, if the last week
+	Valid      bool  // true, if the Object is the valid
 }
 
 // bounds provides a range of acceptable values (plus a map of name to value).
@@ -187,10 +187,9 @@ WRAP:
 // dayMatches returns true if the schedule's day-of-week and day-of-month
 // restrictions are satisfied by the given time.
 func dayMatches(s *SpecSchedule, t time.Time) bool {
-	// If s.Extra.LastWeek means execute jobs at every last-day-of month,so need return immediately after this action scope
 	if s.Extra.Valid {
 		if s.Extra.LastWeek {
-			if isNLastDayOfGivenMonth(t, s.Extra.DayOfWeek) {
+			if matchDoWForTheLastWeek(t, s.Extra.DayOfWeek) {
 				return true
 			}
 		} else {
@@ -209,7 +208,11 @@ func dayMatches(s *SpecSchedule, t time.Time) bool {
 	return domMatch || dowMatch
 }
 
-func matchDayOfTheWeekAndWeekInMonth(t time.Time, weekInTheMonth uint8, dayOfTheWeek uint8) bool {
+// matchDayOfTheWeekAndWeekInMonth returns true if the time, t, has week day = dayOfTheWeek
+// and the dayOfTheWeek is occurring (weekInTheMonth)th time
+// for example, it will return true if
+//	t = 8th June 2020, weekInTheMonth = 2nd(2), dayOfTheWeek = Monday(0)
+func matchDayOfTheWeekAndWeekInMonth(t time.Time, weekInTheMonth, dayOfTheWeek uint8) bool {
 	valid := false
 	switch weekInTheMonth {
 	case 1:
@@ -221,7 +224,7 @@ func matchDayOfTheWeekAndWeekInMonth(t time.Time, weekInTheMonth uint8, dayOfThe
 	case 4:
 		valid = t.Day() <= 28 && t.Day() >= 22
 	}
-	if valid == false {
+	if !valid {
 		return false
 	}
 	switch t.Weekday() {
@@ -244,33 +247,33 @@ func matchDayOfTheWeekAndWeekInMonth(t time.Time, weekInTheMonth uint8, dayOfThe
 	}
 }
 
-func matchNL(allday int, t time.Time, n uint8) bool {
-	// is or not the last week of this month
-	if allday-t.Day() > 6 {
+func matchLastWeekDOW(numberOfDaysInMonth int, t time.Time, dow uint8) bool {
+	if numberOfDaysInMonth-t.Day() > 6 {
 		return false
 	}
 	switch t.Weekday() {
 	case time.Sunday:
-		return n == 0
+		return dow == 0
 	case time.Monday:
-		return n == 1
+		return dow == 1
 	case time.Tuesday:
-		return n == 2
+		return dow == 2
 	case time.Wednesday:
-		return n == 3
+		return dow == 3
 	case time.Thursday:
-		return n == 4
+		return dow == 4
 	case time.Friday:
-		return n == 5
+		return dow == 5
 	case time.Saturday:
-		return n == 6
+		return dow == 6
 	default:
 		return false
 	}
 }
 
-// is or not the last day 'NL'of a given month
-func isNLastDayOfGivenMonth(t time.Time, nl uint8) bool {
+// matchDoWForTheLastWeek returns true if the time, t, is of the last week of the month
+// and day of the week is dow
+func matchDoWForTheLastWeek(t time.Time, dow uint8) bool {
 	year := t.Year()
 	leapYear := false
 	if (year%4 == 0 && year%100 != 0) || year%400 == 0 {
@@ -279,13 +282,13 @@ func isNLastDayOfGivenMonth(t time.Time, nl uint8) bool {
 
 	switch t.Month() {
 	case time.April, time.June, time.September, time.November:
-		return matchNL(30, t, nl)
+		return matchLastWeekDOW(30, t, dow)
 	case time.February:
 		if leapYear {
-			return matchNL(29, t, nl)
+			return matchLastWeekDOW(29, t, dow)
 		}
-		return matchNL(28, t, nl)
+		return matchLastWeekDOW(28, t, dow)
 	default:
-		return matchNL(31, t, nl)
+		return matchLastWeekDOW(31, t, dow)
 	}
 }

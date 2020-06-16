@@ -139,13 +139,16 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 	if err != nil {
 		return nil, err
 	}
-	dayNum, weekNumInt, isLastWeek, ok := dowInNthWeekFormat(fields[5])
+	dayNum, weekNumInt, isLastWeek, ok := parseDowInNthWeekFormat(fields[5])
 	dayOfWeek := func() uint64 {
 		if ok {
 			return 0
 		}
 		return field(fields[5], dow)
 	}()
+	if err != nil {
+		return nil, err
+	}
 
 	return &SpecSchedule{
 		Second:   second,
@@ -164,7 +167,14 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 	}, nil
 }
 
-func dowInNthWeekFormat(spec string) (uint8, uint8, bool, bool) {
+// parseDowInNthWeekFormat parse the dow spec of the cron spec
+// It returns dayOfTheWeek, occurrence or the week number in month, true if the week number is last week, ok
+// For example:
+//	6#3 => 6, 3, false, true
+//	6#L => 6, 0, true, true
+//	XYZ => 0, 0, false, false
+//  8#9 => 0, 0, false, false
+func parseDowInNthWeekFormat(spec string) (uint8, uint8, bool, bool) {
 	var dayOfWeek uint8 = 0
 	var weekNumber uint8 = 0
 	if len(spec) != 3 {
@@ -174,6 +184,11 @@ func dowInNthWeekFormat(spec string) (uint8, uint8, bool, bool) {
 	if day >= "0" && day <= "6" {
 		dayOfWeek = day[0] - '0'
 	} else {
+		return 0, 0, false, false
+	}
+
+	shebang := spec[1:2]
+	if shebang != "#" {
 		return 0, 0, false, false
 	}
 

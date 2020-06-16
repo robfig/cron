@@ -1,6 +1,7 @@
 package cron
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -199,6 +200,57 @@ func TestNext(t *testing.T) {
 	}
 }
 
+func TestNextWithNthDayOfMthWeek(t *testing.T) {
+	runs := []struct {
+		time, spec string
+		expected   string
+	}{
+		// Simple cases - For Monday in June 2020
+		{"Mon Jun 1 01:00 2020", "1 1 * 6 1#1", "Mon Jun 1 01:01 2020"},
+		{"Mon Jun 1 01:00 2020", "1 1 * 6 1#2", "Mon Jun 8 01:01 2020"},
+		{"Mon Jun 1 01:00 2020", "1 1 * 6 1#3", "Mon Jun 15 01:01 2020"},
+		{"Mon Jun 1 01:00 2020", "1 1 * 6 1#4", "Mon Jun 22 01:01 2020"},
+		{"Mon Jun 1 01:00 2020", "1 1 * 6 1#L", "Mon Jun 29 01:01 2020"},
+
+		// Simple cases - For Thursday in June 2020
+		{"Mon Jun 1 01:00 2020", "1 1 * 6 4#1", "Mon Jun 4 01:01 2020"},
+		{"Mon Jun 1 01:00 2020", "1 1 * 6 4#2", "Mon Jun 11 01:01 2020"},
+		{"Mon Jun 1 01:00 2020", "1 1 * 6 4#3", "Mon Jun 18 01:01 2020"},
+		{"Mon Jun 1 01:00 2020", "1 1 * 6 4#4", "Mon Jun 25 01:01 2020"},
+		{"Mon Jun 1 01:00 2020", "1 1 * 6 4#L", "Mon Jun 25 01:01 2020"},
+
+
+		{"Mon Jun 1 01:00 2020", "1 1 10 6 1#2", "Mon Jun 8 01:01 2020"},
+		{"Mon Jun 8 02:00 2020", "1 1 10 6 1#2", "Mon Jun 10 01:01 2020"},
+		{"Mon Jun 10 02:00 2020", "1 1 10 6 1#2", "Mon Jun 10 01:01 2021"},
+		{"Mon Jun 10 02:00 2021", "1 1 10 6 1#2", "Mon Jun 14 01:01 2021"},
+		{"Mon Jun 10 01:00 2021", "1 1 10 6 1#2", "Mon Jun 10 01:01 2021"},
+	}
+
+	for _, c := range runs {
+		sched, err := standardParser.Parse(c.spec)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		actual := sched.Next(getTime(c.time))
+		expected := getTime(c.expected)
+		if !actual.Equal(expected) {
+			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.spec, expected, actual)
+		}
+	}
+	sched, err := standardParser.Parse("1 1 * * 4#1")
+	if err != nil {
+		t.Error(err)
+	}
+	startTime := getTime("Mon Jun 1 01:00 2020")
+	for i := 0; i < 10; i++ {
+		nextTime := sched.Next(startTime)
+		fmt.Println(nextTime)
+		startTime = nextTime
+	}
+}
+
 func TestErrors(t *testing.T) {
 	invalidSpecs := []string{
 		"xyz",
@@ -268,6 +320,179 @@ func TestNextWithTz(t *testing.T) {
 		expected := getTimeTZ(c.expected)
 		if !actual.Equal(expected) {
 			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.spec, expected, actual)
+		}
+	}
+}
+
+// TODO: add the description for each of the tests
+func TestMatchDoWForTheLastWeek(t *testing.T) {
+	runs := []struct {
+		desc     string
+		time     time.Time
+		dow      uint8
+		expected bool
+	}{
+		{
+			desc:     "21 Feb 2021 is not the last Sunday of the Month",
+			time:     time.Date(2021, 2, 21, 0, 0, 0, 0, time.Local),
+			dow:      0,
+			expected: false,
+		},
+		{
+			desc:     "28 Feb 2021 is the last Sunday of the Month",
+			time:     time.Date(2021, 2, 28, 0, 0, 0, 0, time.Local),
+			dow:      0,
+			expected: true,
+		},
+		{
+			desc:     "24 June 2020 is the last Wednesday of the Month",
+			time:     time.Date(2020, 6, 24, 0, 0, 0, 0, time.Local),
+			dow:      3,
+			expected: true,
+		},
+		{
+			desc:     "25 June 2020 is the last Thursday of the Month",
+			time:     time.Date(2020, 6, 25, 0, 0, 0, 0, time.Local),
+			dow:      4,
+			expected: true,
+		},
+		{
+			desc:     "26 June 2020 is the last Friday of the Month",
+			time:     time.Date(2020, 6, 26, 0, 0, 0, 0, time.Local),
+			dow:      5,
+			expected: true,
+		},
+		{
+			desc:     "27 June 2020 is the last Saturday of the Month",
+			time:     time.Date(2020, 6, 27, 0, 0, 0, 0, time.Local),
+			dow:      6,
+			expected: true,
+		},
+		{
+			desc:     "28 June 2020 is the last Sunday of the Month",
+			time:     time.Date(2020, 6, 28, 0, 0, 0, 0, time.Local),
+			dow:      0,
+			expected: true,
+		},
+		{
+			desc:     "29 June 2020 is the last Monday of the Month",
+			time:     time.Date(2020, 6, 29, 0, 0, 0, 0, time.Local),
+			dow:      1,
+			expected: true,
+		},
+		{
+			desc:     "30 June 2020 is the last Tuesday of the Month",
+			time:     time.Date(2020, 6, 30, 0, 0, 0, 0, time.Local),
+			dow:      2,
+			expected: true,
+		},
+		{
+			desc:     "30 June 2020 is not the last Monday of the Month",
+			time:     time.Date(2020, 6, 30, 0, 0, 0, 0, time.Local),
+			dow:      1,
+			expected: false,
+		},
+		{
+			desc:     "15 June 2020 is not the last Monday of the Month",
+			time:     time.Date(2020, 6, 15, 0, 0, 0, 0, time.Local),
+			dow:      1,
+			expected: false,
+		},
+		{
+			desc:     "29 Feb 2020 is the last Saturday of the Month",
+			time:     time.Date(2020, 2, 29, 0, 0, 0, 0, time.Local),
+			dow:      6,
+			expected: true,
+		},
+		{
+			desc:     "22 Feb 2020 is the not last Saturday of the Month",
+			time:     time.Date(2020, 2, 22, 0, 0, 0, 0, time.Local),
+			dow:      6,
+			expected: false,
+		},
+		{
+			desc:     "21 Aug 2020 is not the last Friday  of the Month",
+			time:     time.Date(2020, 8, 21, 0, 0, 0, 0, time.Local),
+			dow:      5,
+			expected: false,
+		},
+		{
+			desc:     "28 Aug 2020 is the last Friday  of the Month",
+			time:     time.Date(2020, 8, 28, 0, 0, 0, 0, time.Local),
+			dow:      5,
+			expected: true,
+		},
+	}
+
+	for _, c := range runs {
+		ok := matchDoWForTheLastWeek(c.time, c.dow)
+		if c.expected != ok {
+			t.Errorf("%s, %d : (expected) %v != %v (actual)", c.time, c.dow, c.expected, ok)
+		}
+	}
+}
+
+func TestMatchDayOfTheWeekAndWeekInMonth(t *testing.T) {
+	runs := []struct {
+		time           time.Time
+		dow            uint8
+		weekOfTheMonth uint8
+		expected       bool
+	}{
+		{
+			time:           time.Date(2020, 6, 1, 0, 0, 0, 0, time.Local),
+			dow:            1,
+			weekOfTheMonth: 1,
+			expected:       true,
+		},
+		{
+			time:           time.Date(2020, 6, 13, 0, 0, 0, 0, time.Local),
+			dow:            6,
+			weekOfTheMonth: 2,
+			expected:       true,
+		},
+		{
+			time:           time.Date(2020, 6, 13, 0, 0, 0, 0, time.Local),
+			dow:            4,
+			weekOfTheMonth: 3,
+			expected:       false,
+		},
+		{
+			time:           time.Date(2020, 6, 28, 0, 0, 0, 0, time.Local),
+			dow:            0,
+			weekOfTheMonth: 4,
+			expected:       true,
+		},
+		{
+			time:           time.Date(2020, 6, 23, 0, 0, 0, 0, time.Local),
+			dow:            2,
+			weekOfTheMonth: 4,
+			expected:       true,
+		},
+		{
+			time:           time.Date(2020, 6, 24, 0, 0, 0, 0, time.Local),
+			dow:            3,
+			weekOfTheMonth: 4,
+			expected:       true,
+		},
+		{
+			time:           time.Date(2020, 6, 25, 0, 0, 0, 0, time.Local),
+			dow:            4,
+			weekOfTheMonth: 4,
+			expected:       true,
+		},
+		{
+			time:           time.Date(2020, 6, 26, 0, 0, 0, 0, time.Local),
+			dow:            5,
+			weekOfTheMonth: 4,
+			expected:       true,
+		},
+	}
+
+	for _, c := range runs {
+		ok := matchDayOfTheWeekAndWeekInMonth(c.time, c.weekOfTheMonth, c.dow)
+		if c.expected != ok {
+			t.Errorf("%s, %d : (expected) %v != %v (actual)", c.time, c.dow, c.expected, ok)
 		}
 	}
 }

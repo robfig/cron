@@ -181,6 +181,83 @@ func TestParseSchedule(t *testing.T) {
 	}
 }
 
+func TestParseScheduleWithDOWAndWeekNum(t *testing.T) {
+	tokyo, _ := time.LoadLocation("Asia/Tokyo")
+	entries := []struct {
+		parser   Parser
+		expr     string
+		expected Schedule
+	}{
+		{
+			parser: standardParser,
+			expr:   "5 10 10 * 3#2",
+			expected: &SpecSchedule{
+				Second:   1 << 0,
+				Minute:   1 << 5,
+				Hour:     1 << 10,
+				Dom:      1 << 10,
+				Month:    all(months),
+				Dow:      0,
+				Location: time.Local,
+				Extra: Extra{
+					DayOfWeek:  3,
+					WeekNumber: 2,
+					LastWeek:   false,
+					Valid:      true,
+				},
+			},
+		},
+		{
+			parser: standardParser,
+			expr:   "CRON_TZ=Asia/Tokyo 5 10 10 * 3#2",
+			expected: &SpecSchedule{
+				Second:   1 << 0,
+				Minute:   1 << 5,
+				Hour:     1 << 10,
+				Dom:      1 << 10,
+				Month:    all(months),
+				Dow:      0,
+				Location: tokyo,
+				Extra: Extra{
+					DayOfWeek:  3,
+					WeekNumber: 2,
+					LastWeek:   false,
+					Valid:      true,
+				},
+			},
+		},
+		{
+			parser: standardParser,
+			expr:   "CRON_TZ=Asia/Tokyo 5 10 10 * 4#L",
+			expected: &SpecSchedule{
+				Second:   1 << 0,
+				Minute:   1 << 5,
+				Hour:     1 << 10,
+				Dom:      1 << 10,
+				Month:    all(months),
+				Dow:      0,
+				Location: tokyo,
+				Extra: Extra{
+					DayOfWeek:  4,
+					WeekNumber: 0,
+					LastWeek:   true,
+					Valid:      true,
+				},
+			},
+		},
+	}
+
+	for _, c := range entries {
+		actual, err := c.parser.Parse(c.expr)
+		if err != nil {
+			t.Errorf("%s => unexpected error %v", c.expr, err)
+		}
+		if !reflect.DeepEqual(actual, c.expected) {
+			t.Errorf("%s => expected %b, got %b", c.expr, c.expected, actual)
+		}
+	}
+}
+
 func TestOptionalSecondSchedule(t *testing.T) {
 	parser := NewParser(SecondOptional | Minute | Hour | Dom | Month | Dow | Descriptor)
 	entries := []struct {
@@ -355,6 +432,81 @@ func TestNoDescriptorParser(t *testing.T) {
 	_, err := parser.Parse("@every 1m")
 	if err == nil {
 		t.Error("expected an error, got none")
+	}
+}
+
+func TestParseDowInNthWeekFormat(t *testing.T) {
+	entries := []struct {
+		spec       string
+		dayOfWeek  uint8
+		weekNumber uint8
+		lastWeek   bool
+		ok         bool
+	}{
+		{
+			spec:       "3#3",
+			dayOfWeek:  3,
+			weekNumber: 3,
+			lastWeek:   false,
+			ok:         true,
+		},
+		{
+			spec:       "3#5",
+			dayOfWeek:  0,
+			weekNumber: 0,
+			lastWeek:   false,
+			ok:         false,
+		},
+		{
+			spec:       "7#5",
+			dayOfWeek:  0,
+			weekNumber: 0,
+			lastWeek:   false,
+			ok:         false,
+		},
+		{
+			spec:       "1#L",
+			dayOfWeek:  1,
+			weekNumber: 0,
+			lastWeek:   true,
+			ok:         true,
+		},
+		{
+			spec:       "##L",
+			dayOfWeek:  0,
+			weekNumber: 0,
+			lastWeek:   false,
+			ok:         false,
+		},
+		{
+			spec:       "#L",
+			dayOfWeek:  0,
+			weekNumber: 0,
+			lastWeek:   false,
+			ok:         false,
+		}, {
+			spec:       "2KL",
+			dayOfWeek:  0,
+			weekNumber: 0,
+			lastWeek:   false,
+			ok:         false,
+		},
+	}
+
+	for _, c := range entries {
+		dayOfWeek, weekNumber, lastWeek, ok := parseDowInNthWeekFormat(c.spec)
+		if dayOfWeek != c.dayOfWeek {
+			t.Errorf("%s => expected %v, got %v", c.spec, c.dayOfWeek, dayOfWeek)
+		}
+		if weekNumber != c.weekNumber {
+			t.Errorf("%s => expected %v, got %v", c.spec, c.weekNumber, weekNumber)
+		}
+		if lastWeek != c.lastWeek {
+			t.Errorf("%s => expected %v, got %v", c.spec, c.lastWeek, lastWeek)
+		}
+		if ok != c.ok {
+			t.Errorf("%s => expected %v, got %v", c.spec, c.ok, ok)
+		}
 	}
 }
 
