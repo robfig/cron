@@ -100,6 +100,18 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 			return nil, fmt.Errorf("provided bad location %s: %v", spec[eq+1:i], err)
 		}
 		spec = strings.TrimSpace(spec[i:])
+	} else if strings.HasPrefix(spec, "OFFSET=") {
+		var err error
+		var offset int
+		i := strings.Index(spec, " ")
+		eq := strings.Index(spec, "=")
+		if offset, err = strconv.Atoi(spec[eq+1 : i]); err != nil {
+			return nil, fmt.Errorf("can't convert offset to integer %s: %v", spec[eq+1:i], err)
+		} else {
+			loc = time.FixedZone("Offset", offset)
+		}
+
+		spec = strings.TrimSpace(spec[i:])
 	}
 
 	// Handle named schedules (descriptors), if configured
