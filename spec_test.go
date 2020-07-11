@@ -54,6 +54,12 @@ func TestActivation(t *testing.T) {
 		{"Mon Jul 9 00:00 2012", "* * 1,15 * *", false},
 		{"Sun Jul 15 00:00 2012", "* * 1,15 * *", true},
 		{"Sun Jul 15 00:00 2012", "* * */2 * Sun", true},
+
+		// test for EOM
+		{"Wed Jul 15 00:00 2020", "* * L * *", false},
+		{"Fri Jul 31 00:00 2020", "* * L * *", true},
+		{"Thu Jul 30 00:00 2020", "* * 1L * *", true},
+		{"Sat Feb 22 00:00 2020", "* * 7L * *", true},
 	}
 
 	for _, test := range tests {
@@ -183,6 +189,10 @@ func TestNext(t *testing.T) {
 		// https://github.com/robfig/cron/issues/157
 		{"2018-10-17T05:00:00-0400", "TZ=America/Sao_Paulo 0 0 9 10 * ?", "2018-11-10T06:00:00-0500"},
 		{"2018-02-14T05:00:00-0500", "TZ=America/Sao_Paulo 0 0 9 22 * ?", "2018-02-22T07:00:00-0500"},
+
+		// EOM test
+		{"TZ=America/New_York 2012-11-04T03:00:00-0500", "0 0 0 L * ?", "2012-11-30T00:00:00-0500"},
+		{"TZ=America/New_York 2012-11-04T03:00:00-0500", "0 0 3 3L * ?", "2012-11-27T03:00:00-0500"},
 	}
 
 	for _, c := range runs {

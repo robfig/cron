@@ -133,6 +133,7 @@ func New(opts ...Option) *Cron {
 // FuncJob is a wrapper that turns a func() into a cron.Job
 type FuncJob func()
 
+// Run will satisfies interface declaration
 func (f FuncJob) Run() { f() }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.

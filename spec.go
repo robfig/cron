@@ -22,8 +22,17 @@ var (
 	seconds = bounds{0, 59, nil}
 	minutes = bounds{0, 59, nil}
 	hours   = bounds{0, 23, nil}
-	dom     = bounds{1, 31, nil}
-	months  = bounds{1, 12, map[string]uint{
+	dom     = bounds{1, 31, map[string]uint{
+		"l":  55,
+		"1l": 54,
+		"2l": 53,
+		"3l": 52,
+		"4l": 51,
+		"5l": 50,
+		"6l": 49,
+		"7l": 48,
+	}}
+	months = bounds{1, 12, map[string]uint{
 		"jan": 1,
 		"feb": 2,
 		"mar": 3,
@@ -177,12 +186,37 @@ WRAP:
 // dayMatches returns true if the schedule's day-of-week and day-of-month
 // restrictions are satisfied by the given time.
 func dayMatches(s *SpecSchedule, t time.Time) bool {
+	domEOM := s.Dom | eomBits(s, t)
 	var (
-		domMatch bool = 1<<uint(t.Day())&s.Dom > 0
+		domMatch bool = 1<<uint(t.Day())&domEOM > 0
 		dowMatch bool = 1<<uint(t.Weekday())&s.Dow > 0
 	)
 	if s.Dom&starBit > 0 || s.Dow&starBit > 0 {
 		return domMatch && dowMatch
 	}
 	return domMatch || dowMatch
+}
+
+// basically EOM(to EOM - 7) flag is stored in bits 55 - 48 of SpecSchedule's Dom
+// you just need to know what date of t's eom, and shift bits 55 - 48 (0x00FF_0000_0000_0000) to that position
+func eomBits(s *SpecSchedule, t time.Time) uint64 {
+	if s.Dom&0x00FF000000000000 == 0 {
+		return 0
+	}
+	eom := byte(30)
+	year := t.Year()
+	leapYear := byte(0)
+	if (year%4 == 0 && year%100 != 0) || year%400 == 0 {
+		leapYear = 1
+	}
+
+	switch t.Month() {
+	case time.April, time.June, time.September, time.November:
+	case time.February:
+		eom = 28 + leapYear
+	default:
+		eom = 31
+	}
+
+	return (s.Dom & 0x00FF000000000000) >> (55 - eom)
 }
