@@ -60,6 +60,12 @@ func TestActivation(t *testing.T) {
 		{"Fri Jul 31 00:00 2020", "* * L * *", true},
 		{"Thu Jul 30 00:00 2020", "* * 1L * *", true},
 		{"Sat Feb 22 00:00 2020", "* * 7L * *", true},
+
+		// test for EOWD
+		{"Wed Jul 15 00:00 2020", "* * L * 0L", false},
+		{"Fri Jul 31 00:00 2020", "* * * * 5L", true},
+		{"Thu Jul 30 00:00 2020", "* * 1L * 3L", true},
+		{"Sat Feb 22 00:00 2020", "* * * * 1L", false},
 	}
 
 	for _, test := range tests {
@@ -193,6 +199,10 @@ func TestNext(t *testing.T) {
 		// EOM test
 		{"TZ=America/New_York 2012-11-04T03:00:00-0500", "0 0 0 L * ?", "2012-11-30T00:00:00-0500"},
 		{"TZ=America/New_York 2012-11-04T03:00:00-0500", "0 0 3 3L * ?", "2012-11-27T03:00:00-0500"},
+
+		// Last weekday of the month
+		{"TZ=Asia/Jakarta 2020-07-27T03:00:00+0700", "0 0 0 * * 4L", "2020-07-30T00:00:00+0700"},
+		{"TZ=Asia/Jakarta 2020-07-04T03:00:00+0700", "0 0 3 * * MonL", "2020-07-27T03:00:00+0700"},
 	}
 
 	for _, c := range runs {

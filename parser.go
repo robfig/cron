@@ -314,9 +314,11 @@ func getRange(expr string, r bounds) (uint64, error) {
 		return 0, fmt.Errorf("beginning of range (%d) below minimum (%d): %s", start, r.min, expr)
 	}
 	if end > r.max {
-		if r.max != 31 { // not dom
+		if r.max != 31 && r.max != 6 { // not dom and not dow
 			return 0, fmt.Errorf("end of range (%d) above maximum (%d): %s", end, r.max, expr)
-		} else if end > 55 || end < 48 {
+		} else if r.max == 31 && (end > 55 || end < 48) {
+			return 0, fmt.Errorf("end of range (%d) above maximum (%d): %s", end, r.max, expr)
+		} else if r.max == 6 && (end > 55 || end < 49) {
 			return 0, fmt.Errorf("end of range (%d) above maximum (%d): %s", end, r.max, expr)
 		}
 	}
