@@ -61,13 +61,19 @@ func Recover(logger Logger) JobWrapper {
 // previous one is complete. Jobs running after a delay of more than a minute
 // have the delay logged at Info.
 func DelayIfStillRunning(logger Logger) JobWrapper {
+	return DelayIfStillRunningWithClock(logger, clock.C)
+}
+
+// DelayIfStillRunningWithClock behaves identically to DelayIfStillRunning but
+// uses the provided Clock for measuring the delay, for use in testing.
+func DelayIfStillRunningWithClock(logger Logger, clk clock.Clock) JobWrapper {
 	return func(j Job) Job {
 		var mu sync.Mutex
 		return FuncJob(func() {
-			start := clock.C.Now()
+			start := clk.Now()
 			mu.Lock()
 			defer mu.Unlock()
-			if dur := clock.C.Since(start); dur > time.Minute {
+			if dur := clk.Since(start); dur > time.Minute {
 				logger.Info("delay", "duration", dur)
 			}
 			j.Run()
