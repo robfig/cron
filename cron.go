@@ -5,6 +5,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/mixer/clock"
 )
 
 // Cron keeps track of any number of entries, invoking the associated func as
@@ -250,18 +252,18 @@ func (c *Cron) run() {
 		// Determine the next entry to run.
 		sort.Sort(byTime(c.entries))
 
-		var timer *time.Timer
+		var timer clock.Timer
 		if len(c.entries) == 0 || c.entries[0].Next.IsZero() {
 			// If there are no entries yet, just sleep - it still handles new entries
 			// and stop requests.
-			timer = time.NewTimer(100000 * time.Hour)
+			timer = clock.C.NewTimer(100000 * time.Hour)
 		} else {
-			timer = time.NewTimer(c.entries[0].Next.Sub(now))
+			timer = clock.C.NewTimer(c.entries[0].Next.Sub(now))
 		}
 
 		for {
 			select {
-			case now = <-timer.C:
+			case now = <-timer.Chan():
 				now = now.In(c.location)
 				c.logger.Info("wake", "now", now)
 
@@ -315,7 +317,7 @@ func (c *Cron) startJob(j Job) {
 
 // now returns current time in c location
 func (c *Cron) now() time.Time {
-	return time.Now().In(c.location)
+	return clock.C.Now().In(c.location)
 }
 
 // Stop stops the cron scheduler if it is running; otherwise it does nothing.

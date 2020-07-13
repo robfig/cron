@@ -5,6 +5,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/mixer/clock"
 )
 
 // JobWrapper decorates the given Job with some behavior.
@@ -62,10 +64,10 @@ func DelayIfStillRunning(logger Logger) JobWrapper {
 	return func(j Job) Job {
 		var mu sync.Mutex
 		return FuncJob(func() {
-			start := time.Now()
+			start := clock.C.Now()
 			mu.Lock()
 			defer mu.Unlock()
-			if dur := time.Since(start); dur > time.Minute {
+			if dur := clock.C.Since(start); dur > time.Minute {
 				logger.Info("delay", "duration", dur)
 			}
 			j.Run()
