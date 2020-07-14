@@ -2,8 +2,6 @@ package cron
 
 import (
 	"time"
-
-	"github.com/mixer/clock"
 )
 
 // Option represents a modification to the default behavior of a Cron.
@@ -47,7 +45,7 @@ func WithLogger(logger Logger) Option {
 }
 
 // WithClock uses the provided clock to track time.
-func WithClock(clk clock.Clock) Option {
+func WithClock(clk Clock) Option {
 	return func(c *Cron) {
 		c.clk = clk
 	}

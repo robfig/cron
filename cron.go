@@ -5,8 +5,6 @@ import (
 	"sort"
 	"sync"
 	"time"
-
-	"github.com/mixer/clock"
 )
 
 // Cron keeps track of any number of entries, invoking the associated func as
@@ -26,7 +24,7 @@ type Cron struct {
 	parser    ScheduleParser
 	nextID    EntryID
 	jobWaiter sync.WaitGroup
-	clk       clock.Clock
+	clk       Clock
 }
 
 // ScheduleParser is an interface for schedule spec parsers that return a Schedule
@@ -126,7 +124,7 @@ func New(opts ...Option) *Cron {
 		logger:    DefaultLogger,
 		location:  time.Local,
 		parser:    standardParser,
-		clk:       clock.C,
+		clk:       defaultClock{},
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -254,7 +252,7 @@ func (c *Cron) run() {
 		// Determine the next entry to run.
 		sort.Sort(byTime(c.entries))
 
-		var timer clock.Timer
+		var timer Timer
 		if len(c.entries) == 0 || c.entries[0].Next.IsZero() {
 			// If there are no entries yet, just sleep - it still handles new entries
 			// and stop requests.
