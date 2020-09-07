@@ -197,6 +197,31 @@ func TestNext(t *testing.T) {
 			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.spec, expected, actual)
 		}
 	}
+
+	quartzRuns := []struct {
+		time, spec string
+		expected   string
+	}{
+		{"Mon Jul 9 23:35 2012", "0 0 0 * Feb Mon 2013", "Mon Feb 4 00:00 2013"},
+		{"Mon Jul 9 23:35 2012", "0 0 0 * Feb Mon 2015", "Mon Feb 2 00:00 2015"},
+		{"Mon Jul 9 23:35 2012", "0 0 0 * Feb Mon/2 2012/2", "Mon Feb 3 00:00 2014"},
+
+		// No year provided
+		{"2012-11-04T00:00:00-0400", "TZ=America/New_York 0 0 * * * ?", "2012-11-04T01:00:00-0400"},
+	}
+
+	for _, c := range quartzRuns {
+		sched, err := quartzParser.Parse(c.spec)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		actual := sched.Next(getTime(c.time))
+		expected := getTime(c.expected)
+		if !actual.Equal(expected) {
+			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.spec, expected, actual)
+		}
+	}
 }
 
 func TestErrors(t *testing.T) {

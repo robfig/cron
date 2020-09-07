@@ -1,11 +1,15 @@
 package cron
 
-import "time"
+import (
+	"math/big"
+	"strconv"
+	"time"
+)
 
 // SpecSchedule specifies a duty cycle (to the second granularity), based on a
 // traditional crontab specification. It is computed initially and stored as bit sets.
 type SpecSchedule struct {
-	Second, Minute, Hour, Dom, Month, Dow uint64
+	Second, Minute, Hour, Dom, Month, Dow, Year *big.Int
 
 	// Override location for this schedule.
 	Location *time.Location
@@ -46,11 +50,21 @@ var (
 		"fri": 5,
 		"sat": 6,
 	}}
+	years = bounds{0, maxYear - minYear, nil} // 1970~2099
 )
 
+func init() {
+	years.names = make(map[string]uint)
+	for i := minYear; i <= maxYear; i++ {
+		years.names[strconv.Itoa(i)] = uint(i - minYear)
+	}
+}
+
 const (
-	// Set the top bit if a star was included in the expression.
-	starBit = 1 << 63
+	maxBits = 160
+
+	minYear = 1970
+	maxYear = 2099
 )
 
 // Next returns the next time this schedule is activated, greater than the given
@@ -88,13 +102,24 @@ func (s *SpecSchedule) Next(t time.Time) time.Time {
 	yearLimit := t.Year() + 5
 
 WRAP:
-	if t.Year() > yearLimit {
+	if t.Year() > yearLimit || t.Year() > maxYear {
 		return time.Time{}
+	}
+
+	for t.Year() < minYear || s.Year.Bit(t.Year()-minYear) == 0 {
+		if !added {
+			added = true
+			t = time.Date(t.Year(), 1, 1, 0, 0, 0, 0, loc)
+		}
+		t = t.AddDate(1, 0, 0)
+		if t.Year() > yearLimit || t.Year() > maxYear {
+			return time.Time{}
+		}
 	}
 
 	// Find the first applicable month.
 	// If it's this month, then do nothing.
-	for 1<<uint(t.Month())&s.Month == 0 {
+	for s.Month.Bit(int(t.Month())) == 0 {
 		// If we have to add a month, reset the other parts to 0.
 		if !added {
 			added = true
@@ -135,7 +160,7 @@ WRAP:
 		}
 	}
 
-	for 1<<uint(t.Hour())&s.Hour == 0 {
+	for s.Hour.Bit(t.Hour()) == 0 {
 		if !added {
 			added = true
 			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, loc)
@@ -147,7 +172,7 @@ WRAP:
 		}
 	}
 
-	for 1<<uint(t.Minute())&s.Minute == 0 {
+	for s.Minute.Bit(t.Minute()) == 0 {
 		if !added {
 			added = true
 			t = t.Truncate(time.Minute)
@@ -159,7 +184,7 @@ WRAP:
 		}
 	}
 
-	for 1<<uint(t.Second())&s.Second == 0 {
+	for s.Second.Bit(t.Second()) == 0 {
 		if !added {
 			added = true
 			t = t.Truncate(time.Second)
@@ -178,10 +203,10 @@ WRAP:
 // restrictions are satisfied by the given time.
 func dayMatches(s *SpecSchedule, t time.Time) bool {
 	var (
-		domMatch bool = 1<<uint(t.Day())&s.Dom > 0
-		dowMatch bool = 1<<uint(t.Weekday())&s.Dow > 0
+		domMatch bool = s.Dom.Bit(t.Day()) > 0
+		dowMatch bool = s.Dow.Bit(int(t.Weekday())) > 0
 	)
-	if s.Dom&starBit > 0 || s.Dow&starBit > 0 {
+	if s.Dom.Bit(maxBits) > 0 || s.Dow.Bit(maxBits) > 0 {
 		return domMatch && dowMatch
 	}
 	return domMatch || dowMatch
