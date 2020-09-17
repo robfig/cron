@@ -43,3 +43,15 @@ func WithLogger(logger Logger) Option {
 		c.logger = logger
 	}
 }
+
+func WithAddBufferSize(bufferSize int) Option {
+	return func(c *Cron) {
+		c.add = make(chan *Entry, bufferSize)
+	}
+}
+
+func WithRemoveBufferSize(bufferSize int) Option {
+	return func(c *Cron) {
+		c.remove = make(chan EntryID, bufferSize)
+	}
+}
