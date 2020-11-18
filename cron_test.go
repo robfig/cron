@@ -102,14 +102,42 @@ func TestStopCausesJobsToNotRun(t *testing.T) {
 	cron := newWithSeconds()
 	cron.Start()
 	cron.Stop()
-	cron.AddFunc("* * * * * ?", func() { wg.Done() })
-
+	err := cron.AddFuncCustomId(1, "* * * * * ?", func() {
+		fmt.Println(time.Now().Unix())
+		wg.Done()
+	})
+	if err != nil {
+		t.Error(err)
+		return
+	}
 	select {
 	case <-time.After(OneSecond):
 		// No job ran!
 	case <-wait(wg):
 		t.Fatal("expected stopped cron does not run any job")
 	}
+}
+
+func TestCustomIdFunc(t *testing.T) {
+	cron := newWithSeconds()
+	cron.Start()
+	for i := 1; i < 100; i++ {
+		k := i
+		err := cron.AddFuncCustomId(EntryID(i), "0/5 * * * * ?", func() {
+			fmt.Println(k)
+			if k%10 == 0 {
+				cron.removeEntry(EntryID(k))
+			}
+		})
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
+	c := make(chan int)
+	time.AfterFunc(time.Second*20, func() {
+		c <- 1
+	})
+	<-c
 }
 
 // Add a job, start cron, expect it runs.
