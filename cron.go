@@ -144,6 +144,10 @@ func (c *Cron) AddFunc(spec string, cmd func()) (EntryID, error) {
 
 func (c *Cron) AddFuncCustomId(id EntryID, spec string, cmd func()) error {
 	job := FuncJob(cmd)
+	return c.AddJobCustomId(id, spec, job)
+}
+
+func (c *Cron) AddJobCustomId(id EntryID, spec string, job Job) error {
 	schedule, err := c.parser.Parse(spec)
 	if err != nil {
 		return err
