@@ -142,6 +142,28 @@ func (c *Cron) AddFunc(spec string, cmd func()) (EntryID, error) {
 	return c.AddJob(spec, FuncJob(cmd))
 }
 
+func (c *Cron) AddFuncCustomId(id EntryID, spec string, cmd func()) error {
+	job := FuncJob(cmd)
+	schedule, err := c.parser.Parse(spec)
+	if err != nil {
+		return err
+	}
+	c.runningMu.Lock()
+	defer c.runningMu.Unlock()
+	entry := &Entry{
+		ID:         id,
+		Schedule:   schedule,
+		WrappedJob: c.chain.Then(job),
+		Job:        job,
+	}
+	if !c.running {
+		c.entries = append(c.entries, entry)
+	} else {
+		c.add <- entry
+	}
+	return nil
+}
+
 // AddJob adds a Job to the Cron to be run on the given schedule.
 // The spec is parsed using the time zone of this Cron instance as the default.
 // An opaque ID is returned that can be used to later remove it.
