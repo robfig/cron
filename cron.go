@@ -142,29 +142,19 @@ func (c *Cron) AddFunc(spec string, cmd func()) (EntryID, error) {
 	return c.AddJob(spec, FuncJob(cmd))
 }
 
+// AddFuncCustomId add a cron with a custom ID
 func (c *Cron) AddFuncCustomId(id EntryID, spec string, cmd func()) error {
 	job := FuncJob(cmd)
 	return c.AddJobCustomId(id, spec, job)
 }
 
+// AddJobCustomId add a cron with a custom ID
 func (c *Cron) AddJobCustomId(id EntryID, spec string, job Job) error {
 	schedule, err := c.parser.Parse(spec)
 	if err != nil {
 		return err
 	}
-	c.runningMu.Lock()
-	defer c.runningMu.Unlock()
-	entry := &Entry{
-		ID:         id,
-		Schedule:   schedule,
-		WrappedJob: c.chain.Then(job),
-		Job:        job,
-	}
-	if !c.running {
-		c.entries = append(c.entries, entry)
-	} else {
-		c.add <- entry
-	}
+	c.scheduleExec(id, schedule, job)
 	return nil
 }
 
@@ -185,8 +175,14 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
 	c.runningMu.Lock()
 	defer c.runningMu.Unlock()
 	c.nextID++
+	c.scheduleExec(c.nextID, schedule, cmd)
+	return c.nextID
+}
+
+// scheduleExec perform add cron
+func (c *Cron) scheduleExec(entryId EntryID, schedule Schedule, cmd Job) {
 	entry := &Entry{
-		ID:         c.nextID,
+		ID:         entryId,
 		Schedule:   schedule,
 		WrappedJob: c.chain.Then(cmd),
 		Job:        cmd,
@@ -196,7 +192,6 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
 	} else {
 		c.add <- entry
 	}
-	return entry.ID
 }
 
 // Entries returns a snapshot of the cron entries.
