@@ -7,7 +7,7 @@ Cron V3 has been released!
 
 To download the specific tagged release, run:
 ```bash
-go get github.com/robfig/cron/v3@v3.0.0
+go get github.com/robfig/cron/v3@v3.0.1
 ```
 Import it in your program as:
 ```go
