@@ -199,6 +199,134 @@ func TestNext(t *testing.T) {
 	}
 }
 
+func TestPrev(t *testing.T) {
+	runs := []struct {
+		time, spec string
+		expected   string
+	}{
+		// Simple cases
+		{"Mon Jul 9 14:45 2012", "0 0/15 * * * *", "Mon Jul 9 14:30 2012"},
+		{"Mon Jul 9 14:01 2012", "0 0/15 * * * *", "Mon Jul 9 14:00 2012"},
+		{"Mon Jul 9 14:00:01 2012", "0 0/15 * * * *", "Mon Jul 9 14:00 2012"},
+
+		// Wrap around hours
+		{"Mon Jul 9 15:20 2012", "0 20-35/15 * * * *", "Mon Jul 9 14:35 2012"},
+
+		// Wrap around days
+		{"Mon Jul 9 00:00 2012", "0 */15 * * * *", "Sun Jul 8 23:45 2012"},
+		{"Mon Jul 9 00:00 2012", "0 20-35/15 * * * *", "Sun Jul 8 23:35 2012"},
+		{"Mon Jul 9 00:15:51 2012", "15/35 20-35/15 * * * *", "Sun Jul 8 23:35:50 2012"},
+		{"Mon Jul 9 00:15:51 2012", "15/35 20-35/15 0/2 * * *", "Sun Jul 8 22:35:50 2012"},
+		{"Mon Jul 9 00:15:51 2012", "15/35 20-35/15 10-12 * * *", "Sun Jul 8 12:35:50 2012"},
+
+		{"Mon Jul 9 00:15:51 2012", "15/35 20-35/15 0/2 */2 * *", "Sat Jul 7 22:35:50 2012"},
+		{"Mon Jul 9 00:15:51 2012", "15/35 20-35/15 * 8-20 * *", "Sun Jul 8 23:35:50 2012"},
+		{"Mon Jul 9 00:15:51 2012", "15/35 20-35/15 * 8-20 Jul *", "Sun Jul 8 23:35:50 2012"},
+
+		// Wrap around months
+		{"Mon Jul 9 00:15 2012", "0 0 0 10 Apr-Oct ?", "Thu Jun 10 00:00 2012"},
+		{"Mon Jul 9 00:15 2012", "0 0 0 */5 Apr,Jun Mon", "Tue Jun 26 00:00 2012"},
+		{"Mon Jul 9 00:15 2012", "0 0 0 */5 Apr Mon", "Mon Apr 30 00:00 2012"},
+
+		// Wrap around years
+		{"Mon Jul 9 00:15 2012", "0 0 0 * Aug Mon", "Mon Aug 29 00:00 2011"},
+		{"Mon Jul 9 00:15 2012", "0 0 0 * Aug Mon/2", "Wed Aug 31 00:00 2011"},
+
+		// Wrap around minute, hour, day, month, and year
+		{"Sun Jan 1 00:00:00 2012", "0 * * * * *", "Sat Dec 31 23:59:00 2011"},
+
+		// Leap year
+		{"Mon Jul 9 00:15 2011", "0 0 0 29 Feb ?", "Fri Feb 29 00:00 2008"},
+
+		// Daylight savings time 2am EST (-5) -> 3am EDT (-4)
+		{"2012-03-11T04:00:00-0400", "TZ=America/New_York 0 30 2 11 Mar ?", "2011-03-11T02:30:00-0500"},
+
+		// hourly job
+		{"2012-03-11T01:00:00-0500", "TZ=America/New_York 0 0 * * * ?", "2012-03-11T00:00:00-0500"},
+		{"2012-03-11T03:00:00-0400", "TZ=America/New_York 0 0 * * * ?", "2012-03-11T01:00:00-0500"},
+		{"2012-03-11T04:00:00-0400", "TZ=America/New_York 0 0 * * * ?", "2012-03-11T03:00:00-0400"},
+		{"2012-03-11T05:00:00-0400", "TZ=America/New_York 0 0 * * * ?", "2012-03-11T04:00:00-0400"},
+
+		// hourly job using CRON_TZ
+		{"2012-03-11T01:00:00-0500", "CRON_TZ=America/New_York 0 0 * * * ?", "2012-03-11T00:00:00-0500"},
+		{"2012-03-11T03:00:00-0400", "CRON_TZ=America/New_York 0 0 * * * ?", "2012-03-11T01:00:00-0500"},
+		{"2012-03-11T04:00:00-0400", "CRON_TZ=America/New_York 0 0 * * * ?", "2012-03-11T03:00:00-0400"},
+		{"2012-03-11T05:00:00-0400", "CRON_TZ=America/New_York 0 0 * * * ?", "2012-03-11T04:00:00-0400"},
+
+		// 1am nightly job
+		{"2012-03-11T04:00:00-0400", "TZ=America/New_York 0 0 1 * * ?", "2012-03-11T01:00:00-0500"},
+		{"2012-03-12T04:00:00-0400", "TZ=America/New_York 0 0 1 * * ?", "2012-03-12T01:00:00-0400"},
+
+		// 2am nightly job (skipped)
+		{"2012-03-11T04:00:00-0400", "TZ=America/New_York 0 0 2 * * ?", "2012-03-10T02:00:00-0500"},
+
+		// Daylight savings time 2am EDT (-4) => 1am EST (-5)
+		{"2012-11-04T01:45:00-0500", "TZ=America/New_York 0 30 1 04 Nov ?", "2012-11-04T01:30:00-0500"},
+		{"2012-11-04T01:45:00-0400", "TZ=America/New_York 0 30 1 04 Nov ?", "2012-11-04T01:30:00-0400"},
+
+		// hourly job
+		{"2012-11-04T01:00:00-0400", "TZ=America/New_York 0 0 * * * ?", "2012-11-04T00:00:00-0400"},
+		{"2012-11-04T01:00:00-0500", "TZ=America/New_York 0 0 * * * ?", "2012-11-04T01:00:00-0400"},
+		{"2012-11-04T02:00:00-0500", "TZ=America/New_York 0 0 * * * ?", "2012-11-04T01:00:00-0500"},
+
+		// 1am nightly job (runs twice)
+		{"2012-11-04T01:00:00-0400", "TZ=America/New_York 0 0 1 * * ?", "2012-11-03T01:00:00-0400"},
+		{"2012-11-04T01:00:00-0500", "TZ=America/New_York 0 0 1 * * ?", "2012-11-04T01:00:00-0400"},
+		{"2012-11-04T05:00:00-0500", "TZ=America/New_York 0 0 1 * * ?", "2012-11-04T01:00:00-0500"},
+
+		// 2am nightly job
+		{"2012-11-04T00:00:00-0400", "TZ=America/New_York 0 0 2 * * ?", "2012-11-03T02:00:00-0400"},
+		{"2012-11-04T05:00:00-0500", "TZ=America/New_York 0 0 2 * * ?", "2012-11-04T02:00:00-0500"},
+
+		// 3am nightly job
+		{"2012-11-04T00:00:00-0400", "TZ=America/New_York 0 0 3 * * ?", "2012-11-03T03:00:00-0400"},
+		{"2012-11-04T05:00:00-0500", "TZ=America/New_York 0 0 3 * * ?", "2012-11-04T03:00:00-0500"},
+
+		// hourly job
+		{"TZ=America/New_York 2012-11-04T01:00:00-0400", "0 0 * * * ?", "2012-11-04T00:00:00-0400"},
+		{"TZ=America/New_York 2012-11-04T01:00:00-0500", "0 0 * * * ?", "2012-11-04T01:00:00-0400"},
+		{"TZ=America/New_York 2012-11-04T02:00:00-0500", "0 0 * * * ?", "2012-11-04T01:00:00-0500"},
+
+		// 1am nightly job (runs twice)
+		{"TZ=America/New_York 2012-11-04T01:00:00-0400", "0 0 1 * * ?", "2012-11-03T01:00:00-0400"},
+		{"TZ=America/New_York 2012-11-04T01:00:00-0500", "0 0 1 * * ?", "2012-11-04T01:00:00-0400"},
+		{"TZ=America/New_York 2012-11-04T05:00:00-0500", "0 0 1 * * ?", "2012-11-04T01:00:00-0500"},
+
+		// 2am nightly job
+		{"TZ=America/New_York 2012-11-04T00:00:00-0400", "0 0 2 * * ?", "2012-11-03T02:00:00-0400"},
+		{"TZ=America/New_York 2012-11-04T05:00:00-0500", "0 0 2 * * ?", "2012-11-04T02:00:00-0500"},
+
+		// 3am nightly job
+		{"TZ=America/New_York 2012-11-04T00:00:00-0400", "0 0 3 * * ?", "2012-11-03T03:00:00-0400"},
+		{"TZ=America/New_York 2012-11-04T05:00:00-0500", "0 0 3 * * ?", "2012-11-04T03:00:00-0500"},
+
+		// Unsatisfiable
+		{"Mon Jul 9 00:15 2012", "0 0 0 30 Feb ?", ""},
+		{"Mon Jul 9 00:15 2012", "0 0 0 31 Apr ?", ""},
+
+		// Monthly job
+		{"TZ=America/New_York 2012-12-01T00:00:00-0500", "0 0 3 3 * ?", "2012-11-03T03:00:00-0400"},
+
+		// Test the scenario of DST resulting in midnight not being a valid time.
+		// https://github.com/robfig/cron/issues/157
+		{"2018-12-07T05:00:00-0500", "TZ=America/Sao_Paulo 0 0 9 10 * ?", "2018-11-10T06:00:00-0500"},
+		{"2018-03-14T05:00:00-0400", "TZ=America/Sao_Paulo 0 0 9 22 * ?", "2018-02-22T07:00:00-0500"},
+	}
+
+	for _, c := range runs {
+		sched, err := secondParser.Parse(c.spec)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		actual := sched.Prev(getTime(c.time))
+		expected := getTime(c.expected)
+		if !actual.Equal(expected) {
+			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.spec, expected, actual)
+		}
+	}
+}
+
 func TestErrors(t *testing.T) {
 	invalidSpecs := []string{
 		"xyz",
