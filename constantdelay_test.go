@@ -52,3 +52,49 @@ func TestConstantDelayNext(t *testing.T) {
 		}
 	}
 }
+
+func TestConstantDelayWithStartNext(t *testing.T) {
+	tests := []struct {
+		time     string
+		delay    time.Duration
+		startAt  string
+		expected string
+	}{
+		// The starting date is the same as time
+		{"Mon Jul 9 14:45 2012", 15*time.Minute + 50*time.Nanosecond, "Mon Jul 9 14:45 2012", "Mon Jul 9 15:00 2012"},
+		{"Mon Jul 9 14:45 2012", 15 * time.Minute, "Mon Jul 9 14:45 2012", "Mon Jul 9 15:00 2012"},
+		{"Mon Jul 9 14:59:59 2012", 15 * time.Minute, "Mon Jul 9 14:59:59 2012", "Mon Jul 9 15:14:59 2012"},
+
+		// The starting date is in the past
+		{"Mon Jul 9 14:45 2012", 15*time.Minute + 50*time.Nanosecond, "Mon Jul 8 14:45 2012", "Mon Jul 9 15:00 2012"},
+		{"Mon Jul 9 14:45 2012", 15 * time.Minute, "Mon Jul 8 14:45 2012", "Mon Jul 9 15:00 2012"},
+		{"Mon Jul 9 14:59:59 2012", 15 * time.Minute, "Mon Jul 8 14:59:59 2012", "Mon Jul 9 15:14:59 2012"},
+
+		// The starting date is way in the past
+		{"Mon Jul 9 14:45 2012", 15*time.Minute + 50*time.Nanosecond, "Thu Jul 9 14:45 1992", "Mon Jul 9 15:00 2012"},
+		{"Mon Jul 9 14:45 2012", 15 * time.Minute, "Thu Jul 9 14:45 1992", "Mon Jul 9 15:00 2012"},
+		{"Mon Jul 9 14:59:59 2012", 15 * time.Minute, "Thu Jul 9 14:59:59 1992", "Mon Jul 9 15:14:59 2012"},
+
+		// The starting date is truncated
+		{"Mon Jul 9 14:45:12 2012", 15*time.Minute + 50*time.Nanosecond, "Mon Jul 9 00:00 2012", "Mon Jul 9 15:00 2012"},
+		{"Mon Jul 9 14:45:12 2012", 15 * time.Minute, "Mon Jul 9 00:00 2012", "Mon Jul 9 15:00 2012"},
+		{"Mon Jul 9 14:59:59 2012", 15 * time.Minute, "Mon Jul 9 00:00:00 2012", "Mon Jul 9 15:00:00 2012"},
+
+		// The starting date is in the future - the job should not run
+		{"Mon Jul 9 14:45 2012", 15*time.Minute + 50*time.Nanosecond, "Mon Jul 10 14:45 2012", ""},
+		{"Mon Jul 9 14:45 2012", 15 * time.Minute, "Mon Jul 10 14:45 2012", ""},
+		{"Mon Jul 9 14:59:59 2012", 15 * time.Minute, "Mon Jul 10 14:59:59 2012", ""},
+
+		// Wrap around months
+		{"Mon Jul 9 23:35 2012", 720 * time.Hour, "Mon Jul 9 00:00 2012", "Thu Aug 8 00:00 2012"},
+		{"Thu Aug 8 23:35 2012", 720 * time.Hour, "Mon Jul 9 00:00 2012", "Fri Sep 7 00:00 2012"},
+	}
+
+	for _, c := range tests {
+		actual := Every(c.delay).StartingAt(getTime(c.startAt)).Next(getTime(c.time))
+		expected := getTime(c.expected)
+		if actual != expected {
+			t.Errorf("%s, \"%s\", %s: (expected) %v != %v (actual)", c.time, c.delay, c.startAt, expected, actual)
+		}
+	}
+}

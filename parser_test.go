@@ -149,7 +149,7 @@ func TestParseSchedule(t *testing.T) {
 		{secondParser, "CRON_TZ=UTC  0 5 * * * *", every5min(time.UTC)},
 		{standardParser, "CRON_TZ=UTC  5 * * * *", every5min(time.UTC)},
 		{secondParser, "CRON_TZ=Asia/Tokyo 0 5 * * * *", every5min(tokyo)},
-		{secondParser, "@every 5m", ConstantDelaySchedule{5 * time.Minute}},
+		{secondParser, "@every 5m", ConstantDelaySchedule{Delay: 5 * time.Minute}},
 		{secondParser, "@midnight", midnight(time.Local)},
 		{secondParser, "TZ=UTC  @midnight", midnight(time.UTC)},
 		{secondParser, "TZ=Asia/Tokyo @midnight", midnight(tokyo)},
@@ -324,7 +324,7 @@ func TestStandardSpecSchedule(t *testing.T) {
 		},
 		{
 			expr:     "@every 5m",
-			expected: ConstantDelaySchedule{time.Duration(5) * time.Minute},
+			expected: ConstantDelaySchedule{Delay: time.Duration(5) * time.Minute},
 		},
 		{
 			expr: "5 j * * *",
