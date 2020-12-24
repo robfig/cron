@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"sync"
 	"time"
@@ -11,19 +12,20 @@ import (
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
-	entries   []*Entry
-	chain     Chain
-	stop      chan struct{}
-	add       chan *Entry
-	remove    chan EntryID
-	snapshot  chan chan []Entry
-	running   bool
-	logger    Logger
-	runningMu sync.Mutex
-	location  *time.Location
-	parser    ScheduleParser
-	nextID    EntryID
-	jobWaiter sync.WaitGroup
+	entries    []*Entry
+	chain      Chain
+	stop       chan struct{}
+	pausedJobs sync.Map
+	add        chan *Entry
+	remove     chan EntryID
+	snapshot   chan chan []Entry
+	running    bool
+	logger     Logger
+	runningMu  sync.Mutex
+	location   *time.Location
+	parser     ScheduleParser
+	nextID     EntryID
+	jobWaiter  sync.WaitGroup
 }
 
 // ScheduleParser is an interface for schedule spec parsers that return a Schedule
@@ -270,6 +272,14 @@ func (c *Cron) run() {
 					if e.Next.After(now) || e.Next.IsZero() {
 						break
 					}
+					// Skip entry if paused.
+					if _, ok := c.pausedJobs.Load(e.ID); ok {
+						// Updating Next and Prev so that the schedule continues to be maintained.
+						// This will help us proceed once the job is continued.
+						e.Prev = e.Next
+						e.Next = e.Schedule.Next(now)
+						continue
+					}
 					c.startJob(e.WrappedJob)
 					e.Prev = e.Next
 					e.Next = e.Schedule.Next(now)
@@ -333,6 +343,46 @@ func (c *Cron) Stop() context.Context {
 		cancel()
 	}()
 	return ctx
+}
+
+// Pause the cron job corresponding to the given id.
+// This would result in a no-op if the job is currently paused.
+func (c *Cron) Pause(id EntryID) error {
+	var validId = false
+	for _, entry := range c.entries {
+		if entry.ID == id {
+			validId = true
+		}
+	}
+	if !validId {
+		return errors.New("invalid entry id")
+	}
+	go func() {
+		if _, ok := c.pausedJobs.Load(id); !ok {
+			c.pausedJobs.Store(id, struct{}{})
+		}
+	}()
+	return nil
+}
+
+// Continue the cron job corresponding to the given id.
+// This would result in a no-op if the job is not currently in a paused state.
+func (c *Cron) Continue(id EntryID) error {
+	var validId = false
+	for _, entry := range c.entries {
+		if entry.ID == id {
+			validId = true
+		}
+	}
+	if !validId {
+		return errors.New("invalid entry id")
+	}
+	go func() {
+		if _, ok := c.pausedJobs.Load(id); ok {
+			c.pausedJobs.Delete(id)
+		}
+	}()
+	return nil
 }
 
 // entrySnapshot returns a copy of the current cron entry list.
