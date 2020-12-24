@@ -12,20 +12,19 @@ import (
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
-	entries    []*Entry
-	chain      Chain
-	stop       chan struct{}
-	pausedJobs sync.Map
-	add        chan *Entry
-	remove     chan EntryID
-	snapshot   chan chan []Entry
-	running    bool
-	logger     Logger
-	runningMu  sync.Mutex
-	location   *time.Location
-	parser     ScheduleParser
-	nextID     EntryID
-	jobWaiter  sync.WaitGroup
+	entries   []*Entry
+	chain     Chain
+	stop      chan struct{}
+	add       chan *Entry
+	remove    chan EntryID
+	snapshot  chan chan []Entry
+	running   bool
+	logger    Logger
+	runningMu sync.Mutex
+	location  *time.Location
+	parser    ScheduleParser
+	nextID    EntryID
+	jobWaiter sync.WaitGroup
 }
 
 // ScheduleParser is an interface for schedule spec parsers that return a Schedule
@@ -71,6 +70,9 @@ type Entry struct {
 	// It is kept around so that user code that needs to get at the job later,
 	// e.g. via Entries() can do so.
 	Job Job
+
+	// Paused is a flag to indicate that whether the job is currently paused.
+	Paused bool
 }
 
 // Valid returns true if this is not the zero entry.
@@ -166,6 +168,7 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
 		Schedule:   schedule,
 		WrappedJob: c.chain.Then(cmd),
 		Job:        cmd,
+		Paused:     false,
 	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
@@ -273,7 +276,7 @@ func (c *Cron) run() {
 						break
 					}
 					// Skip entry if paused.
-					if _, ok := c.pausedJobs.Load(e.ID); ok {
+					if e.Paused {
 						// Updating Next and Prev so that the schedule continues to be maintained.
 						// This will help us proceed once the job is continued.
 						e.Prev = e.Next
@@ -351,17 +354,14 @@ func (c *Cron) Pause(id EntryID) error {
 	var validId = false
 	for _, entry := range c.entries {
 		if entry.ID == id {
+			entry.Paused = true
 			validId = true
+			break
 		}
 	}
 	if !validId {
 		return errors.New("invalid entry id")
 	}
-	go func() {
-		if _, ok := c.pausedJobs.Load(id); !ok {
-			c.pausedJobs.Store(id, struct{}{})
-		}
-	}()
 	return nil
 }
 
@@ -371,17 +371,14 @@ func (c *Cron) Continue(id EntryID) error {
 	var validId = false
 	for _, entry := range c.entries {
 		if entry.ID == id {
+			entry.Paused = false
 			validId = true
+			break
 		}
 	}
 	if !validId {
 		return errors.New("invalid entry id")
 	}
-	go func() {
-		if _, ok := c.pausedJobs.Load(id); ok {
-			c.pausedJobs.Delete(id)
-		}
-	}()
 	return nil
 }
 
