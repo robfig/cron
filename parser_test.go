@@ -179,6 +179,23 @@ func TestParseSchedule(t *testing.T) {
 			t.Errorf("%s => expected %b, got %b", c.expr, c.expected, actual)
 		}
 	}
+
+	badEntries := []struct {
+		parser Parser
+		expr   string
+	}{
+		{secondParser, "TZ="},
+		{standardParser, "TZ="},
+		{secondParser, "CRON_TZ="},
+		{standardParser, "CRON_TZ="},
+	}
+
+	for _, c := range badEntries {
+		_, err := c.parser.Parse(c.expr)
+		if err == nil {
+			t.Errorf("%s => expected error but got none", c.expr)
+		}
+	}
 }
 
 func TestOptionalSecondSchedule(t *testing.T) {
