@@ -82,8 +82,8 @@ func SkipIfStillRunning(logger Logger) JobWrapper {
 		return FuncJob(func() {
 			select {
 			case v := <-ch:
+				defer func() { ch <- v }()
 				j.Run()
-				ch <- v
 			default:
 				logger.Info("skip")
 			}
