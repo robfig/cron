@@ -120,12 +120,12 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		return nil, err
 	}
 
-	field := func(field string, r bounds) uint64 {
+	field := func(field string, r bounds, ex ...string) uint64 {
 		if err != nil {
 			return 0
 		}
 		var bits uint64
-		bits, err = getField(field, r)
+		bits, err = getField(field, r, ex...)
 		return bits
 	}
 
@@ -133,10 +133,17 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		second     = field(fields[0], seconds)
 		minute     = field(fields[1], minutes)
 		hour       = field(fields[2], hours)
-		dayofmonth = field(fields[3], dom)
+		dayofmonth = field(fields[3], dom, fields[5])
 		month      = field(fields[4], months)
-		dayofweek  = field(fields[5], dow)
 	)
+
+	matchDayofWeek := matchLastDayOfGivenMonth(fields[5])
+	dayofweek := func() uint64 {
+		if matchDayofWeek {
+			return 0
+		}
+		return field(fields[5], dow)
+	}()
 	if err != nil {
 		return nil, err
 	}
@@ -149,6 +156,10 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		Month:    month,
 		Dow:      dayofweek,
 		Location: loc,
+		Extra: Extra{
+			L:         fields[3] == "L" || matchDayofWeek,
+			DayOfWeek: getNLDayOfWeek(fields[5]),
+		},
 	}, nil
 }
 
@@ -230,11 +241,39 @@ func ParseStandard(standardSpec string) (Schedule, error) {
 	return standardParser.Parse(standardSpec)
 }
 
+// in the day-of-week field, it specifying "the last Day" of a given month,"the last Friday" of a given month,is  '5L'
+func matchLastDayOfGivenMonth(spec string) bool {
+	// 0L - 6L ,length is 2
+	if len(spec) != 2 || spec[1:] != "L" {
+		return false
+	}
+	day := spec[0:1]
+	if day >= "0" && day <= "6" {
+		return true
+	}
+	return false
+}
+
+func getNLDayOfWeek(field string) uint {
+	if matchLastDayOfGivenMonth(field) {
+		return uint([]byte(field[0:1])[0] - '0')
+	}
+	return 9
+}
+
 // getField returns an Int with the bits set representing all of the times that
 // the field represents or error parsing field value.  A "field" is a comma-separated
 // list of "ranges".
-func getField(field string, r bounds) (uint64, error) {
+func getField(field string, r bounds, ex ...string) (uint64, error) {
 	var bits uint64
+	if r.min == 1 && r.max == 31 && field == "L" {
+		// day of month's L
+		field = "28,29,30,31"
+	}
+	if len(ex) > 0 && matchLastDayOfGivenMonth(ex[0]) {
+		// day of week's (0-6)L
+		field += ",21,22,23,24,25,26,27"
+	}
 	ranges := strings.FieldsFunc(field, func(r rune) bool { return r == ',' })
 	for _, expr := range ranges {
 		bit, err := getRange(expr, r)

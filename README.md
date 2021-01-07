@@ -31,6 +31,7 @@ jobs. In addition, v3 adds support for Go Modules, cleans up rough edges like
 the timezone support, and fixes a number of bugs.
 
 New features:
+- Support for the "L" character at cron format.
 
 - Support for Go modules. Callers must now import this library as
   `github.com/robfig/cron/v3`, instead of `gopkg.in/...`

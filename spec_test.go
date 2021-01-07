@@ -178,6 +178,8 @@ func TestNext(t *testing.T) {
 
 		// Monthly job
 		{"TZ=America/New_York 2012-11-04T00:00:00-0400", "0 0 3 3 * ?", "2012-12-03T03:00:00-0500"},
+		{"TZ=America/New_York 2012-11-04T00:00:00-0400", "0 0 3 3 * 1L", "2012-11-26T03:00:00-0500"},
+		{"TZ=America/New_York 2012-11-04T00:00:00-0400", "0 0 3 3 * 2L", "2012-11-27T03:00:00-0500"},
 
 		// Test the scenario of DST resulting in midnight not being a valid time.
 		// https://github.com/robfig/cron/issues/157
@@ -205,6 +207,9 @@ func TestErrors(t *testing.T) {
 		"60 0 * * *",
 		"0 60 * * *",
 		"0 0 * * XYZ",
+		"0 0 * * XYL",
+		"0 0 * * 12L",
+		"0 0 * * 8L",
 	}
 	for _, spec := range invalidSpecs {
 		_, err := ParseStandard(spec)
