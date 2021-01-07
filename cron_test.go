@@ -678,6 +678,121 @@ func TestMultiThreadedStartAndStop(t *testing.T) {
 	cron.Stop()
 }
 
+func TestCron_UpdateSchedule(t *testing.T) {
+	executionInterval := func(entry Entry) time.Duration {
+		// To get a more accurate measurement of the execution interval, finding the time
+		// difference between the next execution time and the one that follows.
+		next := entry.Next
+		return entry.Schedule.Next(next).Sub(next)
+	}
+
+	checkNoError := func(err error) {
+		if err != nil {
+			t.Error(err)
+		}
+	}
+
+	testScheduleUpdateBeforeStartingCronJob := func(usingSpecString bool) {
+		oldSpec := "?/10 * * * * *"
+		newSpec := "?/5 * * * * *"
+
+		cron := New(WithSeconds())
+		id, err := cron.AddFunc(oldSpec, func() {})
+		checkNoError(err)
+		executionIntervalOldSpec := executionInterval(cron.Entries()[0])
+
+		// Updating schedule.
+		if usingSpecString {
+			checkNoError(cron.UpdateScheduleWithSpec(id, newSpec))
+		} else {
+			newSpecSchedule, err := cron.parser.Parse(newSpec)
+			checkNoError(err)
+			checkNoError(cron.UpdateSchedule(id, newSpecSchedule))
+		}
+		executionIntervalNewSpec := executionInterval(cron.Entries()[0])
+
+		if executionIntervalOldSpec.Seconds() != (executionIntervalNewSpec.Seconds() * 2) {
+			t.Fatal("failed to update schedule")
+		}
+	}
+
+	testScheduleUpdateAfterStartingCronJob := func(usingSpecString bool) {
+		oldSpec := "?/50 * * * * *"
+		newSpec := "?/5 * * * * *"
+
+		cron := New(WithSeconds())
+		executionCounterOldSpec := int64(0)
+		executionCounterNewSpec := int64(0)
+		updated := make(chan struct{})
+
+		id, err := cron.AddFunc(oldSpec, func() {
+			select {
+			case <-updated:
+				atomic.AddInt64(&executionCounterNewSpec, 1)
+			default:
+				atomic.AddInt64(&executionCounterOldSpec, 1)
+			}
+		})
+
+		checkNoError(err)
+		cron.Start()
+
+		select {
+		case <-time.After(5 * time.Second):
+			// Notifying the job to increment executionCounterNewSpec.
+			close(updated)
+
+			if usingSpecString {
+				// Updating schedule.
+				checkNoError(cron.UpdateScheduleWithSpec(id, newSpec))
+			} else {
+				newSpecSchedule, err := cron.parser.Parse(newSpec)
+				checkNoError(err)
+				checkNoError(cron.UpdateSchedule(id, newSpecSchedule))
+			}
+		}
+
+		// Allow at least 1 execution of the job.
+		select {
+		case <-time.After(10 * time.Second):
+			cron.Stop()
+		}
+
+		// Given the old schedule (old spec), the job should not have executed
+		// at all.
+		if atomic.LoadInt64(&executionCounterOldSpec) != 0 {
+			t.Fatal("job ran sooner than it was supposed to")
+		}
+
+		// With the updated schedule (new spec), the job should have executed
+		// at least once.
+		if atomic.LoadInt64(&executionCounterNewSpec) < 1 {
+			t.Fatal("failed to update schedule for job")
+		}
+	}
+
+	t.Run("updating schedule before starting cron job", func(t *testing.T) {
+		t.Run("providing spec string", func(t *testing.T) {
+			testScheduleUpdateBeforeStartingCronJob(true)
+		})
+
+		t.Run("providing schedule", func(t *testing.T) {
+			testScheduleUpdateBeforeStartingCronJob(false)
+		})
+	})
+
+	t.Run("updating schedule after starting cron job", func(t *testing.T) {
+		t.Run("providing spec string", func(t *testing.T) {
+			testScheduleUpdateAfterStartingCronJob(true)
+		})
+
+		t.Run("providing schedule", func(t *testing.T) {
+			testScheduleUpdateAfterStartingCronJob(false)
+		})
+	})
+
+}
+
 func wait(wg *sync.WaitGroup) chan bool {
 	ch := make(chan bool)
 	go func() {
