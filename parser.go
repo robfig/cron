@@ -343,7 +343,6 @@ func mustParseInt(expr string) (uint, error) {
 // getBits sets all bits in the range [min, max], modulo the given step size.
 func getBits(min, max, step uint) uint64 {
 	var bits uint64
-
 	// If step is 1, use shifts.
 	if step == 1 {
 		return ^(math.MaxUint64 << (max + 1)) & (math.MaxUint64 << min)
@@ -428,6 +427,36 @@ func parseDescriptor(descriptor string, loc *time.Location) (Schedule, error) {
 			return nil, fmt.Errorf("failed to parse duration %s: %s", descriptor, err)
 		}
 		return Every(duration), nil
+	}
+
+	const once = "@once "
+	if strings.HasPrefix(descriptor, once) {
+		runDate, err := time.Parse("2006-01-02 15:04:05", strings.Replace(descriptor, once, "", 1))
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse duration %s: %s", descriptor, err)
+		}
+
+		var (
+			second = uint(runDate.Second())
+			minute = uint(runDate.Minute())
+			hour   = uint(runDate.Hour())
+			dom    = uint(runDate.Day())
+			month  = uint(runDate.Month())
+			year   = uint(runDate.Year())
+		)
+
+		ret := &SpecSchedule{
+			Second:   uint64(second),
+			Minute:   uint64(minute),
+			Hour:     uint64(hour),
+			Dom:      uint64(dom),
+			Month:    uint64(month),
+			Year:     uint64(year),
+			Dow:      all(dow),
+			Once:     true,
+			Location: loc,
+		}
+		return ret, nil
 	}
 
 	return nil, fmt.Errorf("unrecognized descriptor: %s", descriptor)
