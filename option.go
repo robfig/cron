@@ -22,6 +22,14 @@ func WithSeconds() Option {
 	))
 }
 
+// WithOptionalSeconds overrides the parser used for interpreting job schedules to
+// include an optional seconds field as the first one.
+func WithOptionalSeconds() Option {
+	return WithParser(NewParser(
+		SecondOptional | Minute | Hour | Dom | Month | Dow | Descriptor,
+	))
+}
+
 // WithParser overrides the parser used for interpreting job schedules.
 func WithParser(p ScheduleParser) Option {
 	return func(c *Cron) {
