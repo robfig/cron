@@ -174,6 +174,110 @@ WRAP:
 	return t.In(origLocation)
 }
 
+// Previous returns the previous time this schedule would have been activated, lower than the given
+// time.  If no time can be found to satisfy the schedule, return the zero time.
+func (s *SpecSchedule) Previous(t time.Time) time.Time {
+	// General approach
+	//
+	// For Month, Day, Hour, Minute, Second:
+	// Check if the time value matches.  If yes, continue to the next field.
+	// If the field doesn't match the schedule, then decrement the field until it matches.
+	// While decrementing the field, a wrap-around brings it back to the beginning
+	// of the field list (since it is necessary to re-verify previous field
+	// values)
+
+	// Convert the given time into the schedule's timezone, if one is specified.
+	// Save the original timezone so we can convert back after we find a time.
+	// Note that schedules without a time zone specified (time.Local) are treated
+	// as local to the time provided.
+	origLocation := t.Location()
+	loc := s.Location
+	if loc == time.Local {
+		loc = t.Location()
+	}
+	if s.Location != time.Local {
+		t = t.In(s.Location)
+	}
+
+	// Start at the earliest possible time (the previous second).
+	t = t.Add(-1*time.Second - time.Duration(t.Nanosecond())*time.Nanosecond)
+
+	// This flag indicates whether a field has been decremented.
+	subtracted := false
+
+	// If no time is found within five years, return zero.
+	yearLimit := t.Year() - 5
+
+WRAP:
+	if t.Year() < yearLimit {
+		return time.Time{}
+	}
+
+	// Find the first applicable month.
+	// If it's this month, then do nothing.
+	for 1<<uint(t.Month())&s.Month == 0 {
+		// If we have to subtract a month, reset the other parts to 0.
+		subtracted = true
+		t = time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, loc).Add(-time.Second)
+
+		// Wrapped around.
+		if t.Month() == time.December {
+			goto WRAP
+		}
+	}
+
+	// Now get a day in that month.
+	for !dayMatches(s, t) {
+		if !subtracted {
+			subtracted = true
+			t = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, 1).Add(-time.Second)
+		}
+		t = t.AddDate(0, 0, -1)
+
+		if t.AddDate(0, 0, 1).Day() == 1 {
+			goto WRAP
+		}
+	}
+
+	for 1<<uint(t.Hour())&s.Hour == 0 {
+		if !subtracted {
+			subtracted = true
+			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, loc).Add(time.Hour).Add(-time.Second)
+		}
+		t = t.Add(-1 * time.Hour)
+
+		if t.Hour() == 23 {
+			goto WRAP
+		}
+	}
+
+	for 1<<uint(t.Minute())&s.Minute == 0 {
+		if !subtracted {
+			subtracted = true
+			t = t.Truncate(time.Minute).Add(time.Minute).Add(-time.Second)
+		}
+		t = t.Add(-1 * time.Minute)
+
+		if t.Minute() == 59 {
+			goto WRAP
+		}
+	}
+
+	for 1<<uint(t.Second())&s.Second == 0 {
+		if !subtracted {
+			subtracted = true
+			t = t.Truncate(time.Second).Add(time.Second)
+		}
+		t = t.Add(-1 * time.Second)
+
+		if t.Second() == 59 {
+			goto WRAP
+		}
+	}
+
+	return t.In(origLocation)
+}
+
 // dayMatches returns true if the schedule's day-of-week and day-of-month
 // restrictions are satisfied by the given time.
 func dayMatches(s *SpecSchedule, t time.Time) bool {
