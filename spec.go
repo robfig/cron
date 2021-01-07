@@ -1,6 +1,8 @@
 package cron
 
-import "time"
+import (
+	"time"
+)
 
 // SpecSchedule specifies a duty cycle (to the second granularity), based on a
 // traditional crontab specification. It is computed initially and stored as bit sets.
@@ -22,8 +24,17 @@ var (
 	seconds = bounds{0, 59, nil}
 	minutes = bounds{0, 59, nil}
 	hours   = bounds{0, 23, nil}
-	dom     = bounds{1, 31, nil}
-	months  = bounds{1, 12, map[string]uint{
+	dom     = bounds{1, 31, map[string]uint{
+		"l":  55,
+		"1l": 54,
+		"2l": 53,
+		"3l": 52,
+		"4l": 51,
+		"5l": 50,
+		"6l": 49,
+		"7l": 48,
+	}}
+	months = bounds{1, 12, map[string]uint{
 		"jan": 1,
 		"feb": 2,
 		"mar": 3,
@@ -38,13 +49,27 @@ var (
 		"dec": 12,
 	}}
 	dow = bounds{0, 6, map[string]uint{
-		"sun": 0,
-		"mon": 1,
-		"tue": 2,
-		"wed": 3,
-		"thu": 4,
-		"fri": 5,
-		"sat": 6,
+		"sun":  0,
+		"mon":  1,
+		"tue":  2,
+		"wed":  3,
+		"thu":  4,
+		"fri":  5,
+		"sat":  6,
+		"sunl": 49,
+		"monl": 50,
+		"tuel": 51,
+		"wedl": 52,
+		"thul": 53,
+		"fril": 54,
+		"satl": 55,
+		"0l":   49,
+		"1l":   50,
+		"2l":   51,
+		"3l":   52,
+		"4l":   53,
+		"5l":   54,
+		"6l":   55,
 	}}
 )
 
@@ -177,12 +202,64 @@ WRAP:
 // dayMatches returns true if the schedule's day-of-week and day-of-month
 // restrictions are satisfied by the given time.
 func dayMatches(s *SpecSchedule, t time.Time) bool {
+	eom, eowd := eomBits(s, t)
 	var (
 		domMatch bool = 1<<uint(t.Day())&s.Dom > 0
 		dowMatch bool = 1<<uint(t.Weekday())&s.Dow > 0
 	)
+	if eom > 0 {
+		domMatch = domMatch || (1<<uint(t.Day())&eom > 0)
+	}
+	if eowd > 0 {
+		dowMatch = dowMatch || (1<<uint(t.Day())&eowd > 0)
+	}
 	if s.Dom&starBit > 0 || s.Dow&starBit > 0 {
 		return domMatch && dowMatch
 	}
 	return domMatch || dowMatch
+}
+
+// basically EOM(to EOM - 7) flag is stored in bits 55 - 48 of SpecSchedule's Dom
+// you just need to know what date of t's eom, and shift bits 55 - 48 (0x00FF_0000_0000_0000) to that position
+func eomBits(s *SpecSchedule, t time.Time) (uint64, uint64) {
+	bDow := byte(s.Dow & 0x00FE000000000000 >> (6 * 8))
+	if s.Dom&0x00FF000000000000 == 0 && bDow == 0 {
+		return 0, 0
+	}
+	eom := byte(30)
+	year := t.Year()
+	leapYear := byte(0)
+	if (year%4 == 0 && year%100 != 0) || year%400 == 0 {
+		leapYear = 1
+	}
+
+	switch t.Month() {
+	case time.April, time.June, time.September, time.November:
+	case time.February:
+		eom = 28 + leapYear
+	default:
+		eom = 31
+	}
+
+	dowBits := uint64(0)
+	if bDow > 0 {
+		lastDayOfWeek := time.Date(t.Year(), t.Month(), int(eom), 0, 0, 0, 0, t.Location()).Weekday()
+		switch lastDayOfWeek {
+		case 0:
+			bDow = (0xFC&bDow)>>1 | (bDow << 6)
+		case 1:
+			bDow = (0xF8&bDow)>>2 | (bDow << 5)
+		case 2:
+			bDow = (0xF0&bDow)>>3 | (bDow << 4)
+		case 3:
+			bDow = (0xE0&bDow)>>4 | (bDow << 3)
+		case 4:
+			bDow = (0xC0&bDow)>>5 | (bDow << 2)
+		case 5:
+			bDow = (0x80&bDow)>>6 | (bDow << 1)
+		default: // actaually case 6 // which is doing nothing
+		}
+		dowBits = uint64(bDow) << (6 * 8)
+	}
+	return (s.Dom & 0x00FF000000000000) >> (55 - eom), dowBits >> (55 - eom)
 }

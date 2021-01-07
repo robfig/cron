@@ -44,12 +44,15 @@ A cron expression represents a set of times, using 5 space-separated fields.
 	----------   | ---------- | --------------  | --------------------------
 	Minutes      | Yes        | 0-59            | * / , -
 	Hours        | Yes        | 0-23            | * / , -
-	Day of month | Yes        | 1-31            | * / , - ?
+	Day of month | Yes        | 1-31            | * / , - ? L 1L 2L 3L 4L 5L 6L 7L
 	Month        | Yes        | 1-12 or JAN-DEC | * / , -
-	Day of week  | Yes        | 0-6 or SUN-SAT  | * / , - ?
+	Day of week  | Yes        | 0-6 or SUN-SAT  | * / , - ? 0L to 6L SUNL to SATL
 
 Month and Day-of-week field values are case insensitive.  "SUN", "Sun", and
 "sun" are equally accepted.
+
+L in day of month indicates last day in the month (eom),  1L means eom - 1 , etc...
+Additional L in  day of week indicates last occurance of the day in the month
 
 The specific interpretation of the format is based on the Cron Wikipedia page:
 https://en.wikipedia.org/wiki/Cron

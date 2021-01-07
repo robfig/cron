@@ -8,12 +8,21 @@ import (
 	"time"
 )
 
-// Configuration options for creating a parser. Most options specify which
+// ParseOption is the configuration options for creating a parser. Most options specify which
 // fields should be included, while others enable features. If a field is not
 // included the parser will assume a default value. These options do not change
 // the order fields are parse in.
 type ParseOption int
 
+// Second field of parse option, default 0
+// Optional seconds field, default 0
+// Minutes field, default 0
+// Hours field, default 0
+// Day of month field, default *
+// Month field, default *
+// Day of week field, default *
+// Optional day of week field, default *
+// Allow descriptors such as @monthly, @weekly, etc.
 const (
 	Second         ParseOption = 1 << iota // Seconds field, default 0
 	SecondOptional                         // Optional seconds field, default 0
@@ -44,7 +53,7 @@ var defaults = []string{
 	"*",
 }
 
-// A custom Parser that can be configured.
+//Parser is a custom parser that can be configured.
 type Parser struct {
 	options ParseOption
 }
@@ -305,7 +314,13 @@ func getRange(expr string, r bounds) (uint64, error) {
 		return 0, fmt.Errorf("beginning of range (%d) below minimum (%d): %s", start, r.min, expr)
 	}
 	if end > r.max {
-		return 0, fmt.Errorf("end of range (%d) above maximum (%d): %s", end, r.max, expr)
+		if r.max != 31 && r.max != 6 { // not dom and not dow
+			return 0, fmt.Errorf("end of range (%d) above maximum (%d): %s", end, r.max, expr)
+		} else if r.max == 31 && (end > 55 || end < 48) {
+			return 0, fmt.Errorf("end of range (%d) above maximum (%d): %s", end, r.max, expr)
+		} else if r.max == 6 && (end > 55 || end < 49) {
+			return 0, fmt.Errorf("end of range (%d) above maximum (%d): %s", end, r.max, expr)
+		}
 	}
 	if start > end {
 		return 0, fmt.Errorf("beginning of range (%d) beyond end of range (%d): %s", start, end, expr)
