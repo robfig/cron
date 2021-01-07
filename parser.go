@@ -2,7 +2,7 @@ package cron
 
 import (
 	"fmt"
-	"math"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +23,8 @@ const (
 	Month                                  // Month field, default *
 	Dow                                    // Day of week field, default *
 	DowOptional                            // Optional day of week field, default *
+	Year                                   // Year field, default *
+	YearOptional                           // Optional years fiels, default 0
 	Descriptor                             // Allow descriptors such as @monthly, @weekly, etc.
 )
 
@@ -33,12 +35,14 @@ var places = []ParseOption{
 	Dom,
 	Month,
 	Dow,
+	Year,
 }
 
 var defaults = []string{
 	"0",
 	"0",
 	"0",
+	"*",
 	"*",
 	"*",
 	"*",
@@ -68,12 +72,18 @@ type Parser struct {
 //  specParser := NewParser(Dom | Month | DowOptional)
 //  sched, err := specParser.Parse("15 */3")
 //
+//  // Quartz parser
+//  quartzParser := NewParser(Second | Minute | Hour | Dom | Month | Dow | YearOptional)
+//
 func NewParser(options ParseOption) Parser {
 	optionals := 0
 	if options&DowOptional > 0 {
 		optionals++
 	}
 	if options&SecondOptional > 0 {
+		optionals++
+	}
+	if options&YearOptional > 0 {
 		optionals++
 	}
 	if optionals > 1 {
@@ -120,11 +130,11 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		return nil, err
 	}
 
-	field := func(field string, r bounds) uint64 {
+	field := func(field string, r bounds) *big.Int {
 		if err != nil {
-			return 0
+			return nil
 		}
-		var bits uint64
+		var bits *big.Int
 		bits, err = getField(field, r)
 		return bits
 	}
@@ -136,6 +146,7 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		dayofmonth = field(fields[3], dom)
 		month      = field(fields[4], months)
 		dayofweek  = field(fields[5], dow)
+		year       = field(fields[6], years)
 	)
 	if err != nil {
 		return nil, err
@@ -148,6 +159,7 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		Dom:      dayofmonth,
 		Month:    month,
 		Dow:      dayofweek,
+		Year:     year,
 		Location: loc,
 	}, nil
 }
@@ -166,6 +178,10 @@ func normalizeFields(fields []string, options ParseOption) ([]string, error) {
 	}
 	if options&DowOptional > 0 {
 		options |= Dow
+		optionals++
+	}
+	if options&YearOptional > 0 {
+		options |= Year
 		optionals++
 	}
 	if optionals > 1 {
@@ -193,9 +209,15 @@ func normalizeFields(fields []string, options ParseOption) ([]string, error) {
 	if min < max && len(fields) == min {
 		switch {
 		case options&DowOptional > 0:
-			fields = append(fields, defaults[5]) // TODO: improve access to default
+			if options&Year > 0 {
+				fields = append(fields[:len(fields)-1], defaults[5], fields[len(fields)-1])
+			} else {
+				fields = append(fields, defaults[5]) // TODO: improve access to default
+			}
 		case options&SecondOptional > 0:
 			fields = append([]string{defaults[0]}, fields...)
+		case options&YearOptional > 0:
+			fields = append(fields, defaults[6])
 		default:
 			return nil, fmt.Errorf("unknown optional field")
 		}
@@ -233,23 +255,23 @@ func ParseStandard(standardSpec string) (Schedule, error) {
 // getField returns an Int with the bits set representing all of the times that
 // the field represents or error parsing field value.  A "field" is a comma-separated
 // list of "ranges".
-func getField(field string, r bounds) (uint64, error) {
-	var bits uint64
+func getField(field string, r bounds) (*big.Int, error) {
+	var bits big.Int
 	ranges := strings.FieldsFunc(field, func(r rune) bool { return r == ',' })
 	for _, expr := range ranges {
 		bit, err := getRange(expr, r)
 		if err != nil {
-			return bits, err
+			return &bits, err
 		}
-		bits |= bit
+		bits.Or(&bits, bit)
 	}
-	return bits, nil
+	return &bits, nil
 }
 
 // getRange returns the bits indicated by the given expression:
 //   number | number "-" number [ "/" number ]
 // or error parsing range.
-func getRange(expr string, r bounds) (uint64, error) {
+func getRange(expr string, r bounds) (*big.Int, error) {
 	var (
 		start, end, step uint
 		rangeAndStep     = strings.Split(expr, "/")
@@ -262,11 +284,11 @@ func getRange(expr string, r bounds) (uint64, error) {
 	if lowAndHigh[0] == "*" || lowAndHigh[0] == "?" {
 		start = r.min
 		end = r.max
-		extra = starBit
+		extra = maxBits
 	} else {
 		start, err = parseIntOrName(lowAndHigh[0], r.names)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 		switch len(lowAndHigh) {
 		case 1:
@@ -274,10 +296,10 @@ func getRange(expr string, r bounds) (uint64, error) {
 		case 2:
 			end, err = parseIntOrName(lowAndHigh[1], r.names)
 			if err != nil {
-				return 0, err
+				return nil, err
 			}
 		default:
-			return 0, fmt.Errorf("too many hyphens: %s", expr)
+			return nil, fmt.Errorf("too many hyphens: %s", expr)
 		}
 	}
 
@@ -287,7 +309,7 @@ func getRange(expr string, r bounds) (uint64, error) {
 	case 2:
 		step, err = mustParseInt(rangeAndStep[1])
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 
 		// Special handling: "N/step" means "N-max/step".
@@ -298,23 +320,27 @@ func getRange(expr string, r bounds) (uint64, error) {
 			extra = 0
 		}
 	default:
-		return 0, fmt.Errorf("too many slashes: %s", expr)
+		return nil, fmt.Errorf("too many slashes: %s", expr)
 	}
 
 	if start < r.min {
-		return 0, fmt.Errorf("beginning of range (%d) below minimum (%d): %s", start, r.min, expr)
+		return nil, fmt.Errorf("beginning of range (%d) below minimum (%d): %s", start, r.min, expr)
 	}
 	if end > r.max {
-		return 0, fmt.Errorf("end of range (%d) above maximum (%d): %s", end, r.max, expr)
+		return nil, fmt.Errorf("end of range (%d) above maximum (%d): %s", end, r.max, expr)
 	}
 	if start > end {
-		return 0, fmt.Errorf("beginning of range (%d) beyond end of range (%d): %s", start, end, expr)
+		return nil, fmt.Errorf("beginning of range (%d) beyond end of range (%d): %s", start, end, expr)
 	}
 	if step == 0 {
-		return 0, fmt.Errorf("step of range should be a positive number: %s", expr)
+		return nil, fmt.Errorf("step of range should be a positive number: %s", expr)
 	}
 
-	return getBits(start, end, step) | extra, nil
+	bits := getBits(start, end, step)
+	if extra > 0 {
+		bits.SetBit(bits, maxBits, 1)
+	}
+	return bits, nil
 }
 
 // parseIntOrName returns the (possibly-named) integer contained in expr.
@@ -341,24 +367,20 @@ func mustParseInt(expr string) (uint, error) {
 }
 
 // getBits sets all bits in the range [min, max], modulo the given step size.
-func getBits(min, max, step uint) uint64 {
-	var bits uint64
+func getBits(min, max, step uint) *big.Int {
+	bits := big.NewInt(0)
 
-	// If step is 1, use shifts.
-	if step == 1 {
-		return ^(math.MaxUint64 << (max + 1)) & (math.MaxUint64 << min)
-	}
-
-	// Else, use a simple loop.
+	//  use a simple loop.
 	for i := min; i <= max; i += step {
-		bits |= 1 << i
+		bits.SetBit(bits, int(i), 1)
 	}
 	return bits
 }
 
 // all returns all bits within the given bounds.  (plus the star bit)
-func all(r bounds) uint64 {
-	return getBits(r.min, r.max, 1) | starBit
+func all(r bounds) *big.Int {
+	bits := getBits(r.min, r.max, 1)
+	return bits.SetBit(bits, maxBits, 1)
 }
 
 // parseDescriptor returns a predefined schedule for the expression, or error if none matches.
@@ -366,56 +388,61 @@ func parseDescriptor(descriptor string, loc *time.Location) (Schedule, error) {
 	switch descriptor {
 	case "@yearly", "@annually":
 		return &SpecSchedule{
-			Second:   1 << seconds.min,
-			Minute:   1 << minutes.min,
-			Hour:     1 << hours.min,
-			Dom:      1 << dom.min,
-			Month:    1 << months.min,
+			Second:   big.NewInt(1 << seconds.min),
+			Minute:   big.NewInt(1 << minutes.min),
+			Hour:     big.NewInt(1 << hours.min),
+			Dom:      big.NewInt(1 << dom.min),
+			Month:    big.NewInt(1 << months.min),
 			Dow:      all(dow),
+			Year:     all(years),
 			Location: loc,
 		}, nil
 
 	case "@monthly":
 		return &SpecSchedule{
-			Second:   1 << seconds.min,
-			Minute:   1 << minutes.min,
-			Hour:     1 << hours.min,
-			Dom:      1 << dom.min,
+			Second:   big.NewInt(1 << seconds.min),
+			Minute:   big.NewInt(1 << minutes.min),
+			Hour:     big.NewInt(1 << hours.min),
+			Dom:      big.NewInt(1 << dom.min),
 			Month:    all(months),
 			Dow:      all(dow),
+			Year:     all(years),
 			Location: loc,
 		}, nil
 
 	case "@weekly":
 		return &SpecSchedule{
-			Second:   1 << seconds.min,
-			Minute:   1 << minutes.min,
-			Hour:     1 << hours.min,
+			Second:   big.NewInt(1 << seconds.min),
+			Minute:   big.NewInt(1 << minutes.min),
+			Hour:     big.NewInt(1 << hours.min),
 			Dom:      all(dom),
 			Month:    all(months),
-			Dow:      1 << dow.min,
+			Dow:      big.NewInt(1 << dow.min),
+			Year:     all(years),
 			Location: loc,
 		}, nil
 
 	case "@daily", "@midnight":
 		return &SpecSchedule{
-			Second:   1 << seconds.min,
-			Minute:   1 << minutes.min,
-			Hour:     1 << hours.min,
+			Second:   big.NewInt(1 << seconds.min),
+			Minute:   big.NewInt(1 << minutes.min),
+			Hour:     big.NewInt(1 << hours.min),
 			Dom:      all(dom),
 			Month:    all(months),
 			Dow:      all(dow),
+			Year:     all(years),
 			Location: loc,
 		}, nil
 
 	case "@hourly":
 		return &SpecSchedule{
-			Second:   1 << seconds.min,
-			Minute:   1 << minutes.min,
+			Second:   big.NewInt(1 << seconds.min),
+			Minute:   big.NewInt(1 << minutes.min),
 			Hour:     all(hours),
 			Dom:      all(dom),
 			Month:    all(months),
 			Dow:      all(dow),
+			Year:     all(years),
 			Location: loc,
 		}, nil
 

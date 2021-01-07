@@ -1,6 +1,7 @@
 package cron
 
 import (
+	"math/big"
 	"reflect"
 	"strings"
 	"testing"
@@ -9,28 +10,33 @@ import (
 
 var secondParser = NewParser(Second | Minute | Hour | Dom | Month | DowOptional | Descriptor)
 
+var quartzParser = NewParser(Second | Minute | Hour | Dom | Month | Dow | YearOptional)
+
 func TestRange(t *testing.T) {
-	zero := uint64(0)
+	var zero *big.Int
 	ranges := []struct {
 		expr     string
 		min, max uint
-		expected uint64
+		expected *big.Int
 		err      string
 	}{
-		{"5", 0, 7, 1 << 5, ""},
-		{"0", 0, 7, 1 << 0, ""},
-		{"7", 0, 7, 1 << 7, ""},
+		{"5", 0, 7, big.NewInt(1 << 5), ""},
+		{"0", 0, 7, big.NewInt(1 << 0), ""},
+		{"7", 0, 7, big.NewInt(1 << 7), ""},
 
-		{"5-5", 0, 7, 1 << 5, ""},
-		{"5-6", 0, 7, 1<<5 | 1<<6, ""},
-		{"5-7", 0, 7, 1<<5 | 1<<6 | 1<<7, ""},
+		{"5-5", 0, 7, big.NewInt(1 << 5), ""},
+		{"5-6", 0, 7, big.NewInt(1<<5 | 1<<6), ""},
+		{"5-7", 0, 7, big.NewInt(1<<5 | 1<<6 | 1<<7), ""},
 
-		{"5-6/2", 0, 7, 1 << 5, ""},
-		{"5-7/2", 0, 7, 1<<5 | 1<<7, ""},
-		{"5-7/1", 0, 7, 1<<5 | 1<<6 | 1<<7, ""},
+		{"5-6/2", 0, 7, big.NewInt(1 << 5), ""},
+		{"5-7/2", 0, 7, big.NewInt(1<<5 | 1<<7), ""},
+		{"5-7/1", 0, 7, big.NewInt(1<<5 | 1<<6 | 1<<7), ""},
 
-		{"*", 1, 3, 1<<1 | 1<<2 | 1<<3 | starBit, ""},
-		{"*/2", 1, 3, 1<<1 | 1<<3, ""},
+		{"*", 1, 3, big.NewInt(0).SetBit(big.NewInt(1<<1|1<<2|1<<3), maxBits, 1), ""},
+		{"*/2", 1, 3, big.NewInt(1<<1 | 1<<3), ""},
+
+		{"0-99", 0, 130, big.NewInt(0).SetBytes([]byte{0xf, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}), ""},
+		{"63-100", 1, 130, big.NewInt(0).SetBytes([]byte{0x1f, 0xff, 0xff, 0xff, 0xff, 0x80, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}), ""},
 
 		{"5--5", 0, 0, zero, "too many hyphens"},
 		{"jan-x", 0, 0, zero, "failed to parse int from"},
@@ -51,8 +57,9 @@ func TestRange(t *testing.T) {
 		if len(c.err) == 0 && err != nil {
 			t.Errorf("%s => unexpected error %v", c.expr, err)
 		}
-		if actual != c.expected {
-			t.Errorf("%s => expected %d, got %d", c.expr, c.expected, actual)
+
+		if (actual == nil && actual != c.expected) || (actual != nil && actual.Cmp(c.expected) != 0) {
+			t.Errorf("%s => expected %v, got %v", c.expr, c.expected, actual)
 		}
 	}
 }
@@ -61,18 +68,19 @@ func TestField(t *testing.T) {
 	fields := []struct {
 		expr     string
 		min, max uint
-		expected uint64
+		expected *big.Int
 	}{
-		{"5", 1, 7, 1 << 5},
-		{"5,6", 1, 7, 1<<5 | 1<<6},
-		{"5,6,7", 1, 7, 1<<5 | 1<<6 | 1<<7},
-		{"1,5-7/2,3", 1, 7, 1<<1 | 1<<5 | 1<<7 | 1<<3},
+		{"5", 1, 7, big.NewInt(1 << 5)},
+		{"5,6", 1, 7, big.NewInt(1<<5 | 1<<6)},
+		{"5,6,7", 1, 7, big.NewInt(1<<5 | 1<<6 | 1<<7)},
+		{"1,5-7/2,3", 1, 7, big.NewInt(1<<1 | 1<<5 | 1<<7 | 1<<3)},
+		{"65-72/2", 1, 130, big.NewInt(0).SetBytes([]byte{0xaa, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0})},
 	}
 
 	for _, c := range fields {
 		actual, _ := getField(c.expr, bounds{c.min, c.max, nil})
-		if actual != c.expected {
-			t.Errorf("%s => expected %d, got %d", c.expr, c.expected, actual)
+		if actual.Cmp(c.expected) != 0 {
+			t.Errorf("%s => expected %v, got %v", c.expr, c.expected, actual)
 		}
 	}
 }
@@ -80,20 +88,21 @@ func TestField(t *testing.T) {
 func TestAll(t *testing.T) {
 	allBits := []struct {
 		r        bounds
-		expected uint64
+		expected *big.Int
 	}{
-		{minutes, 0xfffffffffffffff}, // 0-59: 60 ones
-		{hours, 0xffffff},            // 0-23: 24 ones
-		{dom, 0xfffffffe},            // 1-31: 31 ones, 1 zero
-		{months, 0x1ffe},             // 1-12: 12 ones, 1 zero
-		{dow, 0x7f},                  // 0-6: 7 ones
+		{minutes, big.NewInt(0xfffffffffffffff)}, // 0-59: 60 ones
+		{hours, big.NewInt(0xffffff)},            // 0-23: 24 ones
+		{dom, big.NewInt(0xfffffffe)},            // 1-31: 31 ones, 1 zero
+		{months, big.NewInt(0x1ffe)},             // 1-12: 12 ones, 1 zero
+		{dow, big.NewInt(0x7f)},                  // 0-6: 7 ones
+		{years, big.NewInt(0).SetBytes([]byte{0x3, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff})},
 	}
 
 	for _, c := range allBits {
 		actual := all(c.r) // all() adds the starBit, so compensate for that..
-		if c.expected|starBit != actual {
-			t.Errorf("%d-%d/%d => expected %b, got %b",
-				c.r.min, c.r.max, 1, c.expected|starBit, actual)
+		if c.expected.SetBit(c.expected, maxBits, 1).Cmp(actual) != 0 {
+			t.Errorf("%d-%d/%d => expected %v, got %v",
+				c.r.min, c.r.max, 1, c.expected.SetBit(c.expected, maxBits, 1), actual)
 		}
 	}
 }
@@ -101,18 +110,19 @@ func TestAll(t *testing.T) {
 func TestBits(t *testing.T) {
 	bits := []struct {
 		min, max, step uint
-		expected       uint64
+		expected       *big.Int
 	}{
-		{0, 0, 1, 0x1},
-		{1, 1, 1, 0x2},
-		{1, 5, 2, 0x2a}, // 101010
-		{1, 4, 2, 0xa},  // 1010
+		{0, 0, 1, big.NewInt(0x1)},
+		{1, 1, 1, big.NewInt(0x2)},
+		{1, 5, 2, big.NewInt(0x2a)}, // 101010
+		{1, 4, 2, big.NewInt(0xa)},  // 1010
+		{77, 82, 2, big.NewInt(0).SetBytes([]byte{0x2, 0xa0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0})},
 	}
 
 	for _, c := range bits {
 		actual := getBits(c.min, c.max, c.step)
-		if c.expected != actual {
-			t.Errorf("%d-%d/%d => expected %b, got %b",
+		if c.expected.Cmp(actual) != 0 {
+			t.Errorf("%d-%d/%d => expected %v, got %v",
 				c.min, c.max, c.step, c.expected, actual)
 		}
 	}
@@ -160,14 +170,18 @@ func TestParseSchedule(t *testing.T) {
 			expr:   "* 5 * * * *",
 			expected: &SpecSchedule{
 				Second:   all(seconds),
-				Minute:   1 << 5,
+				Minute:   big.NewInt(1 << 5),
 				Hour:     all(hours),
 				Dom:      all(dom),
 				Month:    all(months),
 				Dow:      all(dow),
+				Year:     all(years),
 				Location: time.Local,
 			},
 		},
+		{quartzParser, "0 0 0 1 1 * 1990/10", everyNYearSince(time.Local, 1990, 10)},
+		{quartzParser, "0 0 0 1 1 * 1970/30", everyNYearSince(time.Local, 1970, 30)},
+		{quartzParser, "0 0 0 1 1 * 2099/3", everyNYearSince(time.Local, 2099, 3)},
 	}
 
 	for _, c := range entries {
@@ -214,43 +228,55 @@ func TestNormalizeFields(t *testing.T) {
 			"AllFields_NoOptional",
 			[]string{"0", "5", "*", "*", "*", "*"},
 			Second | Minute | Hour | Dom | Month | Dow | Descriptor,
-			[]string{"0", "5", "*", "*", "*", "*"},
+			[]string{"0", "5", "*", "*", "*", "*", "*"},
+		},
+		{
+			"AllQuartzFields_NoOptional",
+			[]string{"1", "1", "1", "1", "1", "1", "1999"},
+			Second | Minute | Hour | Dom | Month | Dow | Year,
+			[]string{"1", "1", "1", "1", "1", "1", "1999"},
+		},
+		{
+			"AllQuartzFields_YearOptional",
+			[]string{"1", "1", "1", "1", "1", "1"},
+			Second | Minute | Hour | Dom | Month | Dow | YearOptional,
+			[]string{"1", "1", "1", "1", "1", "1", "*"},
 		},
 		{
 			"AllFields_SecondOptional_Provided",
 			[]string{"0", "5", "*", "*", "*", "*"},
 			SecondOptional | Minute | Hour | Dom | Month | Dow | Descriptor,
-			[]string{"0", "5", "*", "*", "*", "*"},
+			[]string{"0", "5", "*", "*", "*", "*", "*"},
 		},
 		{
 			"AllFields_SecondOptional_NotProvided",
 			[]string{"5", "*", "*", "*", "*"},
 			SecondOptional | Minute | Hour | Dom | Month | Dow | Descriptor,
-			[]string{"0", "5", "*", "*", "*", "*"},
+			[]string{"0", "5", "*", "*", "*", "*", "*"},
 		},
 		{
 			"SubsetFields_NoOptional",
 			[]string{"5", "15", "*"},
 			Hour | Dom | Month,
-			[]string{"0", "0", "5", "15", "*", "*"},
+			[]string{"0", "0", "5", "15", "*", "*", "*"},
 		},
 		{
 			"SubsetFields_DowOptional_Provided",
 			[]string{"5", "15", "*", "4"},
 			Hour | Dom | Month | DowOptional,
-			[]string{"0", "0", "5", "15", "*", "4"},
+			[]string{"0", "0", "5", "15", "*", "4", "*"},
 		},
 		{
 			"SubsetFields_DowOptional_NotProvided",
 			[]string{"5", "15", "*"},
 			Hour | Dom | Month | DowOptional,
-			[]string{"0", "0", "5", "15", "*", "*"},
+			[]string{"0", "0", "5", "15", "*", "*", "*"},
 		},
 		{
 			"SubsetFields_SecondOptional_NotProvided",
 			[]string{"5", "15", "*"},
 			SecondOptional | Hour | Dom | Month,
-			[]string{"0", "0", "5", "15", "*", "*"},
+			[]string{"0", "0", "5", "15", "*", "*", "*"},
 		},
 	}
 
@@ -320,7 +346,7 @@ func TestStandardSpecSchedule(t *testing.T) {
 	}{
 		{
 			expr:     "5 * * * *",
-			expected: &SpecSchedule{1 << seconds.min, 1 << 5, all(hours), all(dom), all(months), all(dow), time.Local},
+			expected: &SpecSchedule{big.NewInt(1 << seconds.min), big.NewInt(1 << 5), all(hours), all(dom), all(months), all(dow), all(years), time.Local},
 		},
 		{
 			expr:     "@every 5m",
@@ -359,25 +385,43 @@ func TestNoDescriptorParser(t *testing.T) {
 }
 
 func every5min(loc *time.Location) *SpecSchedule {
-	return &SpecSchedule{1 << 0, 1 << 5, all(hours), all(dom), all(months), all(dow), loc}
+	return &SpecSchedule{big.NewInt(1 << 0), big.NewInt(1 << 5), all(hours), all(dom), all(months), all(dow), all(years), loc}
 }
 
 func every5min5s(loc *time.Location) *SpecSchedule {
-	return &SpecSchedule{1 << 5, 1 << 5, all(hours), all(dom), all(months), all(dow), loc}
+	return &SpecSchedule{big.NewInt(1 << 5), big.NewInt(1 << 5), all(hours), all(dom), all(months), all(dow), all(years), loc}
 }
 
 func midnight(loc *time.Location) *SpecSchedule {
-	return &SpecSchedule{1, 1, 1, all(dom), all(months), all(dow), loc}
+	return &SpecSchedule{big.NewInt(1), big.NewInt(1), big.NewInt(1), all(dom), all(months), all(dow), all(years), loc}
+}
+
+func everyNYearSince(loc *time.Location, since, n int) *SpecSchedule {
+	bits := big.NewInt(0)
+	for i := since; i <= maxYear; i += n {
+		bits.SetBit(bits, i-minYear, 1)
+	}
+	return &SpecSchedule{
+		Second:   big.NewInt(1 << seconds.min),
+		Minute:   big.NewInt(1 << minutes.min),
+		Hour:     big.NewInt(1 << hours.min),
+		Dom:      big.NewInt(1 << dom.min),
+		Month:    big.NewInt(1 << months.min),
+		Dow:      all(dow),
+		Year:     bits,
+		Location: loc,
+	}
 }
 
 func annual(loc *time.Location) *SpecSchedule {
 	return &SpecSchedule{
-		Second:   1 << seconds.min,
-		Minute:   1 << minutes.min,
-		Hour:     1 << hours.min,
-		Dom:      1 << dom.min,
-		Month:    1 << months.min,
+		Second:   big.NewInt(1 << seconds.min),
+		Minute:   big.NewInt(1 << minutes.min),
+		Hour:     big.NewInt(1 << hours.min),
+		Dom:      big.NewInt(1 << dom.min),
+		Month:    big.NewInt(1 << months.min),
 		Dow:      all(dow),
+		Year:     all(years),
 		Location: loc,
 	}
 }
