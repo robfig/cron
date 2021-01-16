@@ -72,11 +72,18 @@ type Entry struct {
 	Job Job
 
 	// Paused is a flag to indicate that whether the job is currently paused.
-	Paused bool
+	Paused   bool
+	PausedMu sync.Mutex
 }
 
 // Valid returns true if this is not the zero entry.
 func (e Entry) Valid() bool { return e.ID != 0 }
+
+func (e *Entry) isPaused() bool {
+	e.PausedMu.Lock()
+	defer e.PausedMu.Unlock()
+	return e.Paused
+}
 
 // byTime is a wrapper for sorting the entry array by time
 // (with zero time at the end).
@@ -276,7 +283,7 @@ func (c *Cron) run() {
 						break
 					}
 					// Skip entry if paused.
-					if e.Paused {
+					if e.isPaused() {
 						// Updating Next and Prev so that the schedule continues to be maintained.
 						// This will help us proceed once the job is continued.
 						e.Prev = e.Next
@@ -354,8 +361,10 @@ func (c *Cron) Pause(id EntryID) error {
 	var validId = false
 	for _, entry := range c.entries {
 		if entry.ID == id {
+			entry.PausedMu.Lock()
 			entry.Paused = true
 			validId = true
+			entry.PausedMu.Unlock()
 			break
 		}
 	}
@@ -371,8 +380,10 @@ func (c *Cron) Continue(id EntryID) error {
 	var validId = false
 	for _, entry := range c.entries {
 		if entry.ID == id {
+			entry.PausedMu.Lock()
 			entry.Paused = false
 			validId = true
+			entry.PausedMu.Unlock()
 			break
 		}
 	}

@@ -708,20 +708,20 @@ func TestCron_PauseAndContinue(t *testing.T) {
 		} // waiting for single execution of job.
 		checkNoError(cron.Pause(id))
 
-		<-time.After(12 * time.Second) // waiting 2 execution cycles + some buffer time (2 sec).
-		if ticks != 1 {                // the job should have just run once.
+		<-time.After(12 * time.Second)     // waiting 2 execution cycles + some buffer time (2 sec).
+		if atomic.LoadInt64(&ticks) != 1 { // the job should have just run once.
 			t.Error("failed to correctly pause job")
 		}
 		checkNoError(cron.Continue(id))
 		// next execution would be in approx 3 seconds as we had a 2 second buffer.
-		<-time.After(4 * time.Second) // waiting for one more execution of job (1sec buffer).
-		if ticks != 2 {               // the job should have run twice.
+		<-time.After(4 * time.Second)      // waiting for one more execution of job (1sec buffer).
+		if atomic.LoadInt64(&ticks) != 2 { // the job should have run twice.
 			t.Error("failed to correctly continue job")
 		}
 		cron.Stop()
 	})
 
-	t.Run("pause+continue with multiple jobs", func(t *testing.T) {
+	t.Run("pause and continue with multiple jobs", func(t *testing.T) {
 		spec := "?/5 * * * * *" // every 5 seconds.
 		cron := New(WithSeconds())
 		var tick1, tick2 int64
@@ -743,11 +743,11 @@ func TestCron_PauseAndContinue(t *testing.T) {
 		} // waiting for both jobs to execute once.
 		checkNoError(cron.Pause(id1))
 
-		<-time.After(12 * time.Second) // waiting 2 execution cycles + some buffer time (2 sec).
-		if tick1 != 1 {                // tick1 should not have changed as corresponding job was paused.
+		<-time.After(12 * time.Second)     // waiting 2 execution cycles + some buffer time (2 sec).
+		if atomic.LoadInt64(&tick1) != 1 { // tick1 should not have changed as corresponding job was paused.
 			t.Error("failed to pause job with id = ", id1)
 		}
-		if tick2 != 3 {
+		if atomic.LoadInt64(&tick2) != 3 {
 			// should not be here.
 			t.Error("job with id = ", id2, " did not execute required number of times")
 		}
@@ -755,10 +755,10 @@ func TestCron_PauseAndContinue(t *testing.T) {
 		checkNoError(cron.Continue(id1))
 
 		<-time.After(4 * time.Second) // waiting for one more execution of job1 (1sec buffer).
-		if tick2 != 3 {
+		if atomic.LoadInt64(&tick2) != 3 {
 			t.Error("failed to pause job with id = ", id2)
 		}
-		if tick1 != 2 {
+		if atomic.LoadInt64(&tick1) != 2 {
 			t.Error("continued job with id = ", id1, " executed more times than required")
 		}
 		cron.Stop()
