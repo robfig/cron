@@ -16,7 +16,7 @@ import "github.com/robfig/cron/v3"
 It requires Go 1.11 or later due to usage of Go Modules.
 
 Refer to the documentation here:
-http://godoc.org/github.com/robfig/cron
+https://pkg.go.dev/github.com/robfig/cron/v3
 
 The rest of this document describes the the advances in v3 and a list of
 breaking changes for users that wish to upgrade from an earlier version.
