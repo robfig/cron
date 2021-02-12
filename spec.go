@@ -53,6 +53,12 @@ const (
 	starBit = 1 << 63
 )
 
+// isOneOff returns a true or false if this schedule should only be ran once.
+// For ConstantDelaySchedule this will ALWAYS return false
+func (s *SpecSchedule) isOneOff() bool {
+	return false
+}
+
 // Next returns the next time this schedule is activated, greater than the given
 // time.  If no time can be found to satisfy the schedule, return the zero time.
 func (s *SpecSchedule) Next(t time.Time) time.Time {

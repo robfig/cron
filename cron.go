@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -41,6 +42,7 @@ type Schedule interface {
 	// Next returns the next activation time, later than the given time.
 	// Next is invoked initially, and then each time the job is run.
 	Next(time.Time) time.Time
+	isOneOff() bool
 }
 
 // EntryID identifies an entry within a Cron instance
@@ -151,6 +153,20 @@ func (c *Cron) AddJob(spec string, cmd Job) (EntryID, error) {
 		return 0, err
 	}
 	return c.Schedule(schedule, cmd), nil
+}
+
+// ScheduleAtExactTime adds a func to the Cron to be run at an exact time.
+// The job will only be ran once.
+// An opaque ID is returned that can be used to later remove it.
+func (c *Cron) ScheduleAtExactTime(scheduleTime time.Time, cmd func()) (EntryID, error) {
+	if scheduleTime.Before(time.Now()) {
+		return 0, fmt.Errorf("scheduleTime must be in the future")
+	}
+
+	schedule := ExactSchedule{
+		Schedule: scheduleTime,
+	}
+	return c.Schedule(schedule, FuncJob(cmd)), nil
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
@@ -265,16 +281,28 @@ func (c *Cron) run() {
 				now = now.In(c.location)
 				c.logger.Info("wake", "now", now)
 
-				// Run every entry whose next time was less than now
-				for _, e := range c.entries {
-					if e.Next.After(now) || e.Next.IsZero() {
+				var entries []*Entry
+				index := 0
+				for _, entry := range c.entries {
+					// Run every entry whose next time was less than now
+					if entry.Next.After(now) || entry.Next.IsZero() {
 						break
 					}
-					c.startJob(e.WrappedJob)
-					e.Prev = e.Next
-					e.Next = e.Schedule.Next(now)
-					c.logger.Info("run", "now", now, "entry", e.ID, "next", e.Next)
+					c.startJob(entry.WrappedJob)
+					entry.Prev = entry.Next
+					entry.Next = entry.Schedule.Next(now)
+					c.logger.Info("run", "now", now, "entry", entry.ID, "next", entry.Next)
+					// only run once
+					if !entry.Schedule.isOneOff() {
+						// If the entry isn't a one off we need to keep a log off it in the entries slice
+						entries = append(entries, entry)
+					}
+					index++
 				}
+				// The above for loop will stop as soon as a entry's Next value is later than the current time OR is the zero value for a time variable
+				// If any have been skipped we need to ensure they are added back to the entries slice
+				entries = append(entries, c.entries[index:]...)
+				c.entries = entries
 
 			case newEntry := <-c.add:
 				timer.Stop()
