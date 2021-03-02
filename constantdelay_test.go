@@ -80,10 +80,10 @@ func TestConstantDelayWithStartNext(t *testing.T) {
 		{"Mon Jul 9 14:45:12 2012", 15 * time.Minute, "Mon Jul 9 00:00 2012", "Mon Jul 9 15:00 2012"},
 		{"Mon Jul 9 14:59:59 2012", 15 * time.Minute, "Mon Jul 9 00:00:00 2012", "Mon Jul 9 15:00:00 2012"},
 
-		// The starting date is in the future - the job should not run
-		{"Mon Jul 9 14:45 2012", 15*time.Minute + 50*time.Nanosecond, "Mon Jul 10 14:45 2012", ""},
-		{"Mon Jul 9 14:45 2012", 15 * time.Minute, "Mon Jul 10 14:45 2012", ""},
-		{"Mon Jul 9 14:59:59 2012", 15 * time.Minute, "Mon Jul 10 14:59:59 2012", ""},
+		// The starting date is in the future - use the starting date
+		{"Mon Jul 9 14:45 2012", 15*time.Minute + 50*time.Nanosecond, "Mon Jul 10 14:45 2012", "Mon Jul 10 14:45 2012"},
+		{"Mon Jul 9 14:45 2012", 15 * time.Minute, "Mon Jul 10 14:45 2012", "Mon Jul 10 14:45 2012"},
+		{"Mon Jul 9 14:59:59 2012", 15 * time.Minute, "Mon Jul 10 14:59:59 2012", "Mon Jul 10 14:59:59 2012"},
 
 		// Wrap around months
 		{"Mon Jul 9 23:35 2012", 720 * time.Hour, "Mon Jul 9 00:00 2012", "Thu Aug 8 00:00 2012"},

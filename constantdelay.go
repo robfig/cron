@@ -27,7 +27,7 @@ func Every(duration time.Duration) ConstantDelaySchedule {
 // when we want the cycle to start at a specific date which makes it independent
 // from the Cron start time.
 func (schedule ConstantDelaySchedule) StartingAt(start time.Time) ConstantDelaySchedule {
-	schedule.startAt = start
+	schedule.startAt = start.Add(-time.Duration(start.Nanosecond()) * time.Nanosecond)
 	return schedule
 }
 
@@ -36,7 +36,7 @@ func (schedule ConstantDelaySchedule) StartingAt(start time.Time) ConstantDelayS
 func (schedule ConstantDelaySchedule) Next(t time.Time) time.Time {
 	if !schedule.startAt.IsZero() {
 		if schedule.startAt.After(t) {
-			return time.Time{}
+			return schedule.startAt
 		}
 
 		t = schedule.startAt.Add((t.Sub(schedule.startAt) / schedule.Delay) * (schedule.Delay))
