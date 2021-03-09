@@ -92,7 +92,26 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 
 	// Extract timezone if present
 	var loc = time.Local
-	if strings.HasPrefix(spec, "TZ=") || strings.HasPrefix(spec, "CRON_TZ=") {
+	switch {
+	case strings.HasPrefix(spec, "TZ=UTC+"),
+		strings.HasPrefix(spec, "TZ=UTC-"),
+		strings.HasPrefix(spec, "CRON_TZ=UTC+"),
+		strings.HasPrefix(spec, "CRON_TZ=UTC-"):
+		i := strings.Index(spec, " ")
+		eq := strings.Index(spec, "=")
+		nHour, err := strconv.Atoi(spec[eq+5 : i])
+		if err != nil {
+			return nil, fmt.Errorf("provided bad location %s: %v", spec[eq+1:i], err)
+		}
+
+		if nHour > 5940 || nHour < -5940 {
+			return nil, fmt.Errorf("provided bad location %s", spec[eq+1:i])
+		}
+
+		loc = time.FixedZone(spec[eq+1:i], 3600*nHour)
+		spec = strings.TrimSpace(spec[i:])
+	case strings.HasPrefix(spec, "TZ="),
+		strings.HasPrefix(spec, "CRON_TZ="):
 		var err error
 		i := strings.Index(spec, " ")
 		eq := strings.Index(spec, "=")
