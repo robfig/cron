@@ -148,11 +148,17 @@ func TestParseSchedule(t *testing.T) {
 		{standardParser, "5 * * * *", every5min(time.Local)},
 		{secondParser, "CRON_TZ=UTC  0 5 * * * *", every5min(time.UTC)},
 		{standardParser, "CRON_TZ=UTC  5 * * * *", every5min(time.UTC)},
+		{standardParser, "CRON_TZ=UTC+0  5 * * * *", every5min(time.UTC)},
+		{standardParser, "CRON_TZ=UTC-0  5 * * * *", every5min(time.UTC)},
 		{secondParser, "CRON_TZ=Asia/Tokyo 0 5 * * * *", every5min(tokyo)},
+		{secondParser, "CRON_TZ=UTC+540 0 5 * * * *", every5min(tokyo)},
 		{secondParser, "@every 5m", ConstantDelaySchedule{5 * time.Minute}},
 		{secondParser, "@midnight", midnight(time.Local)},
 		{secondParser, "TZ=UTC  @midnight", midnight(time.UTC)},
+		{secondParser, "TZ=UTC+0  @midnight", midnight(time.UTC)},
+		{secondParser, "TZ=UTC-0  @midnight", midnight(time.UTC)},
 		{secondParser, "TZ=Asia/Tokyo @midnight", midnight(tokyo)},
+		{secondParser, "TZ=UTC+540 @midnight", midnight(tokyo)},
 		{secondParser, "@yearly", annual(time.Local)},
 		{secondParser, "@annually", annual(time.Local)},
 		{
@@ -173,10 +179,24 @@ func TestParseSchedule(t *testing.T) {
 	for _, c := range entries {
 		actual, err := c.parser.Parse(c.expr)
 		if err != nil {
-			t.Errorf("%s => unexpected error %v", c.expr, err)
+			t.Fatalf("%s => unexpected error %v", c.expr, err)
 		}
+
+		// specific check location's offset
+		if _, ok := actual.(*SpecSchedule); ok {
+			// check location
+			now := time.Now()
+			_, actualOffset := now.In(actual.(*SpecSchedule).Location).Zone()
+			_, expectedOffset := now.In(c.expected.(*SpecSchedule).Location).Zone()
+			if actualOffset != expectedOffset {
+				t.Fatalf("%s => location expected %v, got %v", c.expr, c.expected.(*SpecSchedule).Location, actual.(*SpecSchedule).Location)
+			}
+
+			actual.(*SpecSchedule).Location = c.expected.(*SpecSchedule).Location
+		}
+
 		if !reflect.DeepEqual(actual, c.expected) {
-			t.Errorf("%s => expected %b, got %b", c.expr, c.expected, actual)
+			t.Fatalf("%s => expected %b, got %b", c.expr, c.expected, actual)
 		}
 	}
 }
