@@ -1,4 +1,4 @@
-[![GoDoc](http://godoc.org/github.com/robfig/cron?status.png)](http://godoc.org/github.com/robfig/cron)
+[![GoDoc](http://godoc.org/github.com/robfig/cron?status.png)](https://pkg.go.dev/github.com/robfig/cron/v3)
 [![Build Status](https://travis-ci.org/robfig/cron.svg?branch=master)](https://travis-ci.org/robfig/cron)
 
 # cron
