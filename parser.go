@@ -35,6 +35,31 @@ var places = []ParseOption{
 	Dow,
 }
 
+// Provide names for our enumeration
+func (po ParseOption) String() string {
+	switch po {
+	case Second:
+		return "Second"
+	case SecondOptional:
+		return "Second (optional)"
+	case Minute:
+		return "Minute"
+	case Hour:
+		return "Hour"
+	case Dom:
+		return "Date of month"
+	case Month:
+		return "Month"
+	case Dow:
+		return "Date of week"
+	case DowOptional:
+		return "Day of week (optional)"
+	case Descriptor:
+		return "Descriptor"
+	}
+	return "Unknown"
+}
+
 var defaults = []string{
 	"0",
 	"0",
@@ -47,6 +72,28 @@ var defaults = []string{
 // A custom Parser that can be configured.
 type Parser struct {
 	options ParseOption
+}
+
+// Provides general information about which field failed to parse, and as well as
+// an internal error to provide more information.
+type ParseErrorInvalidField struct {
+	Err   error
+	Field ParseOption
+}
+
+func (e *ParseErrorInvalidField) Error() string {
+	return fmt.Sprintf("%s field could not be parsed.", e.Field.String())
+}
+
+// Provides specific information about what went wrong during parsing.
+type ParseErrorInvalidValue struct {
+	Key        string
+	Reason     string
+	Expression string
+}
+
+func (e *ParseErrorInvalidValue) Error() string {
+	return fmt.Sprintf("Error parsing expression `%s`: %s", e.Expression, e.Reason)
 }
 
 // NewParser creates a Parser with custom options.
@@ -120,22 +167,28 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		return nil, err
 	}
 
-	field := func(field string, r bounds) uint64 {
+	field := func(expression string, field ParseOption, r bounds) uint64 {
 		if err != nil {
 			return 0
 		}
-		var bits uint64
-		bits, err = getField(field, r)
+		bits, validateErr := getField(expression, r)
+		if validateErr != nil {
+			err = &ParseErrorInvalidField{
+				Err:   validateErr,
+				Field: field,
+			}
+		}
+
 		return bits
 	}
 
 	var (
-		second     = field(fields[0], seconds)
-		minute     = field(fields[1], minutes)
-		hour       = field(fields[2], hours)
-		dayofmonth = field(fields[3], dom)
-		month      = field(fields[4], months)
-		dayofweek  = field(fields[5], dow)
+		second     = field(fields[0], places[0], seconds)
+		minute     = field(fields[1], places[1], minutes)
+		hour       = field(fields[2], places[2], hours)
+		dayofmonth = field(fields[3], places[3], dom)
+		month      = field(fields[4], places[4], months)
+		dayofweek  = field(fields[5], places[5], dow)
 	)
 	if err != nil {
 		return nil, err
@@ -246,7 +299,7 @@ func getField(field string, r bounds) (uint64, error) {
 	return bits, nil
 }
 
-// getRange returns the bits indicated by the given expression:
+// getRange returns the bits indicated by the given Expression:
 //   number | number "-" number [ "/" number ]
 // or error parsing range.
 func getRange(expr string, r bounds) (uint64, error) {
@@ -277,7 +330,11 @@ func getRange(expr string, r bounds) (uint64, error) {
 				return 0, err
 			}
 		default:
-			return 0, fmt.Errorf("too many hyphens: %s", expr)
+			return 0, &ParseErrorInvalidValue{
+				Key:        "too_many_hypens",
+				Reason:     "too many hyphens",
+				Expression: expr,
+			}
 		}
 	}
 
@@ -298,20 +355,40 @@ func getRange(expr string, r bounds) (uint64, error) {
 			extra = 0
 		}
 	default:
-		return 0, fmt.Errorf("too many slashes: %s", expr)
+		return 0, &ParseErrorInvalidValue{
+			Key:        "too_many_slashes",
+			Reason:     "too many slashes",
+			Expression: expr,
+		}
 	}
 
 	if start < r.min {
-		return 0, fmt.Errorf("beginning of range (%d) below minimum (%d): %s", start, r.min, expr)
+		return 0, &ParseErrorInvalidValue{
+			Key:        "beginning_range_out_of_bounds",
+			Reason:     fmt.Sprintf("beginning of range (%d) below minimum (%d)", start, r.min),
+			Expression: expr,
+		}
 	}
 	if end > r.max {
-		return 0, fmt.Errorf("end of range (%d) above maximum (%d): %s", end, r.max, expr)
+		return 0, &ParseErrorInvalidValue{
+			Key:        "end_range_out_of_bounds",
+			Reason:     fmt.Sprintf("end of range (%d) above maximum (%d)", end, r.max),
+			Expression: expr,
+		}
 	}
 	if start > end {
-		return 0, fmt.Errorf("beginning of range (%d) beyond end of range (%d): %s", start, end, expr)
+		return 0, &ParseErrorInvalidValue{
+			Key:        "beginning_range_exceeds_end",
+			Reason:     fmt.Sprintf("beginning of range (%d) beyond end of range (%d)", start, end),
+			Expression: expr,
+		}
 	}
 	if step == 0 {
-		return 0, fmt.Errorf("step of range should be a positive number: %s", expr)
+		return 0, &ParseErrorInvalidValue{
+			Key:        "step_not_positive",
+			Reason:     "step of range should be a positive number",
+			Expression: expr,
+		}
 	}
 
 	return getBits(start, end, step) | extra, nil
@@ -327,14 +404,22 @@ func parseIntOrName(expr string, names map[string]uint) (uint, error) {
 	return mustParseInt(expr)
 }
 
-// mustParseInt parses the given expression as an int or returns an error.
+// mustParseInt parses the given Expression as an int or returns an error.
 func mustParseInt(expr string) (uint, error) {
 	num, err := strconv.Atoi(expr)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse int from %s: %s", expr, err)
+		return 0, &ParseErrorInvalidValue{
+			Key:        "failed_parse_int",
+			Reason:     fmt.Sprintf("%s is not a valid integer", expr),
+			Expression: expr,
+		}
 	}
 	if num < 0 {
-		return 0, fmt.Errorf("negative number (%d) not allowed: %s", num, expr)
+		return 0, &ParseErrorInvalidValue{
+			Key:        "negative_number",
+			Reason:     "negative number found, but not allowed",
+			Expression: expr,
+		}
 	}
 
 	return uint(num), nil
@@ -361,7 +446,7 @@ func all(r bounds) uint64 {
 	return getBits(r.min, r.max, 1) | starBit
 }
 
-// parseDescriptor returns a predefined schedule for the expression, or error if none matches.
+// parseDescriptor returns a predefined schedule for the Expression, or error if none matches.
 func parseDescriptor(descriptor string, loc *time.Location) (Schedule, error) {
 	switch descriptor {
 	case "@yearly", "@annually":
