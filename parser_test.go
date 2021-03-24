@@ -33,8 +33,8 @@ func TestRange(t *testing.T) {
 		{"*/2", 1, 3, 1<<1 | 1<<3, ""},
 
 		{"5--5", 0, 0, zero, "too many hyphens"},
-		{"jan-x", 0, 0, zero, "failed to parse int from"},
-		{"2-x", 1, 5, zero, "failed to parse int from"},
+		{"jan-x", 0, 0, zero, "failed to parse int"},
+		{"2-x", 1, 5, zero, "failed to parse int"},
 		{"*/-12", 0, 0, zero, "negative number"},
 		{"*//2", 0, 0, zero, "too many slashes"},
 		{"1", 3, 5, zero, "below minimum"},
@@ -120,7 +120,7 @@ func TestBits(t *testing.T) {
 
 func TestParseScheduleErrors(t *testing.T) {
 	var tests = []struct{ expr, err string }{
-		{"* 5 j * * *", "failed to parse int from"},
+		{"* 5 j * * *", "Hour field could not be parsed"},
 		{"@every Xm", "failed to parse duration"},
 		{"@unrecognized", "unrecognized descriptor"},
 		{"* * * *", "expected 5 to 6 fields"},
@@ -327,8 +327,8 @@ func TestStandardSpecSchedule(t *testing.T) {
 			expected: ConstantDelaySchedule{time.Duration(5) * time.Minute},
 		},
 		{
-			expr: "5 j * * *",
-			err:  "failed to parse int from",
+			expr: "5 1 * k *",
+			err:  "Month field could not be parsed",
 		},
 		{
 			expr: "* * * *",
