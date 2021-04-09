@@ -107,6 +107,33 @@ cron.New(
   cron.WithLogger(cron.VerbosePrintfLogger(logger)))
 ```
 
+# Example
+```golang
+package main
+
+import (
+    "fmt"
+    "os"
+    "os/signal"
+    "time"
+    "github.com/robfig/cron"
+)
+
+func main() {
+    c := cron.New()
+    c.AddFunc("* * * * * *", RunEverySecond)
+    go c.Start()
+    sig := make(chan os.Signal)
+    signal.Notify(sig, os.Interrupt, os.Kill)
+    <-sig
+
+}
+
+func RunEverySecond() {
+    fmt.Printf("%v\n", time.Now())
+}
+```
+
 ### Background - Cron spec format
 
 There are two cron spec formats in common usage:
