@@ -62,6 +62,9 @@ type Entry struct {
 	// Prev is the last time this job was run, or the zero time if never.
 	Prev time.Time
 
+	// Activate determines whether to skip Job execution.
+	Activate bool
+
 	// WrappedJob is the thing to run when the Schedule is activated.
 	WrappedJob Job
 
@@ -164,6 +167,7 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
 		Schedule:   schedule,
 		WrappedJob: c.chain.Then(cmd),
 		Job:        cmd,
+		Activate:   true,
 	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
@@ -209,6 +213,18 @@ func (c *Cron) Remove(id EntryID) {
 	} else {
 		c.removeEntry(id)
 	}
+}
+
+// Activate an entry to enable it's execution.
+func (c *Cron) Activate(id EntryID) {
+	c.setEntryActivate(id, true)
+	c.logger.Info("activate", "entry", id)
+}
+
+// Deactivate an entry to prevent it's execution.
+func (c *Cron) Deactivate(id EntryID) {
+	c.setEntryActivate(id, false)
+	c.logger.Info("deactivate", "entry", id)
 }
 
 // Start the cron scheduler in its own goroutine, or no-op if already started.
@@ -267,7 +283,7 @@ func (c *Cron) run() {
 
 				// Run every entry whose next time was less than now
 				for _, e := range c.entries {
-					if e.Next.After(now) || e.Next.IsZero() {
+					if e.Next.After(now) || e.Next.IsZero() || !e.Activate {
 						break
 					}
 					c.startJob(e.WrappedJob)
@@ -352,4 +368,13 @@ func (c *Cron) removeEntry(id EntryID) {
 		}
 	}
 	c.entries = entries
+}
+
+func (c *Cron) setEntryActivate(id EntryID, activate bool) {
+	for _, e := range c.entries {
+		if e.ID == id {
+			e.Activate = activate
+			return
+		}
+	}
 }
