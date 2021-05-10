@@ -36,6 +36,19 @@ type Job interface {
 	Run()
 }
 
+type JobOption struct {
+	id EntryID
+}
+
+func (jo JobOption) GetID() EntryID {
+	return jo.id
+}
+
+type OptionJob interface {
+	Job
+	RunWithOption(*JobOption)
+}
+
 // Schedule describes a job's duty cycle.
 type Schedule interface {
 	// Next returns the next activation time, later than the given time.
@@ -132,14 +145,22 @@ func New(opts ...Option) *Cron {
 
 // FuncJob is a wrapper that turns a func() into a cron.Job
 type FuncJob func()
+type FuncOptionJob func(*JobOption)
 
 func (f FuncJob) Run() { f() }
+
+func (f FuncOptionJob) Run()                       { f(&JobOption{}) }
+func (f FuncOptionJob) RunWithOption(o *JobOption) { f(o) }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
 // The spec is parsed using the time zone of this Cron instance as the default.
 // An opaque ID is returned that can be used to later remove it.
 func (c *Cron) AddFunc(spec string, cmd func()) (EntryID, error) {
 	return c.AddJob(spec, FuncJob(cmd))
+}
+
+func (c *Cron) AddOptionFunc(spec string, cmd func(*JobOption)) (EntryID, error) {
+	return c.AddOptionJob(spec, FuncOptionJob(cmd))
 }
 
 // AddJob adds a Job to the Cron to be run on the given schedule.
@@ -151,6 +172,19 @@ func (c *Cron) AddJob(spec string, cmd Job) (EntryID, error) {
 		return 0, err
 	}
 	return c.Schedule(schedule, cmd), nil
+}
+
+func (c *Cron) AddOptionJob(spec string, cmd OptionJob) (EntryID, error) {
+
+	schedule, err := c.parser.Parse(spec)
+	if err != nil {
+		return 0, err
+	}
+	return c.ScheduleOptionJob(schedule, cmd), nil
+}
+
+func (c *Cron) ScheduleOptionJob(schedule Schedule, cmd OptionJob) EntryID {
+	return c.Schedule(schedule, cmd)
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
@@ -309,7 +343,14 @@ func (c *Cron) startJob(j Job) {
 	c.jobWaiter.Add(1)
 	go func() {
 		defer c.jobWaiter.Done()
-		j.Run()
+		switch j := j.(type) {
+		case OptionJob:
+			j.RunWithOption(&JobOption{
+				c.nextID,
+			})
+		case Job:
+			j.Run()
+		}
 	}()
 }
 
@@ -352,4 +393,15 @@ func (c *Cron) removeEntry(id EntryID) {
 		}
 	}
 	c.entries = entries
+}
+
+func (c *Cron) hasEntry(id EntryID) bool {
+
+	for _, e := range c.entries {
+		if e.ID == id {
+			return true
+		}
+	}
+
+	return false
 }
