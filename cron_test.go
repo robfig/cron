@@ -162,6 +162,27 @@ func TestAddWhileRunningWithDelay(t *testing.T) {
 	}
 }
 
+func TestRemoveOptionJob(t *testing.T) {
+	cron := newWithSeconds()
+	cron.Start()
+	defer cron.Stop()
+
+	id, err := cron.AddOptionFunc("* * * * * ?", func(o *JobOption) {
+		cron.Remove(o.GetID())
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for range time.After(OneSecond) {
+		if ok := cron.hasEntry(id); ok {
+			t.Errorf("test remove option job: want removed(true), got not removed(false)")
+		} else {
+			return
+		}
+	}
+}
+
 // Add a job, remove a job, start cron, expect nothing runs.
 func TestRemoveBeforeRunning(t *testing.T) {
 	wg := &sync.WaitGroup{}
