@@ -86,7 +86,7 @@ func TestAll(t *testing.T) {
 		{hours, 0xffffff},            // 0-23: 24 ones
 		{dom, 0xfffffffe},            // 1-31: 31 ones, 1 zero
 		{months, 0x1ffe},             // 1-12: 12 ones, 1 zero
-		{dow, 0x7f},                  // 0-6: 7 ones
+		{dow, 0x7ffffffff},           // 0-6: 7 ones
 	}
 
 	for _, c := range allBits {

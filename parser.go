@@ -61,11 +61,11 @@ type Parser struct {
 //  sched, err := specParser.Parse("0 0 15 */3 *")
 //
 //  // Same as above, just excludes time fields
-//  specParser := NewParser(Dom | Month | Dow)
+//  subsParser := NewParser(Dom | Month | Dow)
 //  sched, err := specParser.Parse("15 */3 *")
 //
 //  // Same as above, just makes Dow optional
-//  specParser := NewParser(Dom | Month | DowOptional)
+//  subsParser := NewParser(Dom | Month | DowOptional)
 //  sched, err := specParser.Parse("15 */3")
 //
 func NewParser(options ParseOption) Parser {
@@ -129,13 +129,22 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		return bits
 	}
 
+	dowfield := func(field string, r bounds) uint64 {
+		if err != nil {
+			return 0
+		}
+		var bits uint64
+		bits, err = getDowField(field, r)
+		return bits
+	}
+
 	var (
 		second     = field(fields[0], seconds)
 		minute     = field(fields[1], minutes)
 		hour       = field(fields[2], hours)
 		dayofmonth = field(fields[3], dom)
 		month      = field(fields[4], months)
-		dayofweek  = field(fields[5], dow)
+		dayofweek  = dowfield(fields[5], dow)
 	)
 	if err != nil {
 		return nil, err
@@ -317,6 +326,64 @@ func getRange(expr string, r bounds) (uint64, error) {
 	return getBits(start, end, step) | extra, nil
 }
 
+// getDowField returns an Int with the bits set representing all of the times that
+// the field represents or error parsing field value.  A "field" is a comma-separated
+// list of "ranges".
+func getDowField(field string, r bounds) (uint64, error) {
+	var bits uint64
+	ranges := strings.FieldsFunc(field, func(r rune) bool { return r == ',' })
+	for _, expr := range ranges {
+		var bit uint64
+		var err error
+		if strings.Contains(expr, "#") {
+			bit, err = getWithHashTag(expr, r)
+		} else {
+			bit, err = getRange(expr, r)
+			if bit != 0x80000007ffffffff {
+				bit = bit | bit<<7 | bit<<14 | bit<<21 | bit<<28 | (bit & 0x8000000000000000)
+			}
+		}
+
+		if err != nil {
+			return bits, err
+		}
+		bits |= bit
+	}
+	return bits, nil
+}
+
+// getWithHashTag returns the bits indicated by the given expression:
+//   number "#" number
+// or error parsing range.
+func getWithHashTag(expr string, r bounds) (uint64, error) {
+	var (
+		left, right uint
+		wodInMonth  = strings.Split(expr, "#")
+		err         error
+	)
+
+	if len(wodInMonth) == 2 {
+		left, err = parseIntOrName(wodInMonth[0], r.names)
+		if err != nil {
+			return 0, err
+		}
+		right, err = parseIntOrName(wodInMonth[1], nil)
+		if err != nil {
+			return 0, err
+		}
+		if left > 6 {
+			return 0, fmt.Errorf("bad value before hash tag: %d, which must between 0 and 6", right)
+		}
+		if right > 5 || right < 1 {
+			return 0, fmt.Errorf("bad value after hash tag: %d, which must between 1 and 5", right)
+		}
+
+		left = left + (right-1)*7
+		return getBits(left, left, 1), nil
+	}
+	return 0, fmt.Errorf("missmatched count of hash tags: %s", expr)
+}
+
 // parseIntOrName returns the (possibly-named) integer contained in expr.
 func parseIntOrName(expr string, names map[string]uint) (uint, error) {
 	if names != nil {
@@ -393,7 +460,7 @@ func parseDescriptor(descriptor string, loc *time.Location) (Schedule, error) {
 			Hour:     1 << hours.min,
 			Dom:      all(dom),
 			Month:    all(months),
-			Dow:      1 << dow.min,
+			Dow:      1<<dow.min | 1<<(dow.min+7) | 1<<(dow.min+14) | 1<<(dow.min+21) | 1<<(dow.min+28),
 			Location: loc,
 		}, nil
 
