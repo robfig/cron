@@ -37,7 +37,7 @@ var (
 		"nov": 11,
 		"dec": 12,
 	}}
-	dow = bounds{0, 6, map[string]uint{
+	dow = bounds{0, 34, map[string]uint{
 		"sun": 0,
 		"mon": 1,
 		"tue": 2,
@@ -179,7 +179,7 @@ WRAP:
 func dayMatches(s *SpecSchedule, t time.Time) bool {
 	var (
 		domMatch bool = 1<<uint(t.Day())&s.Dom > 0
-		dowMatch bool = 1<<uint(t.Weekday())&s.Dow > 0
+		dowMatch bool = 1<<(uint(t.Weekday())+7*(uint(t.Day()-1)/7))&s.Dow > 0
 	)
 	if s.Dom&starBit > 0 || s.Dow&starBit > 0 {
 		return domMatch && dowMatch
