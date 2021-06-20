@@ -120,6 +120,11 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		return nil, err
 	}
 
+	if fields[3] == "L" {
+		now := time.Now().In(loc)
+		fields[3] = strconv.Itoa(ldom(now))
+	}
+
 	field := func(field string, r bounds) uint64 {
 		if err != nil {
 			return 0
@@ -149,6 +154,7 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		Month:    month,
 		Dow:      dayofweek,
 		Location: loc,
+		CronExpr: spec,
 	}, nil
 }
 
@@ -373,6 +379,7 @@ func parseDescriptor(descriptor string, loc *time.Location) (Schedule, error) {
 			Month:    1 << months.min,
 			Dow:      all(dow),
 			Location: loc,
+			CronExpr: descriptor,
 		}, nil
 
 	case "@monthly":
@@ -384,6 +391,7 @@ func parseDescriptor(descriptor string, loc *time.Location) (Schedule, error) {
 			Month:    all(months),
 			Dow:      all(dow),
 			Location: loc,
+			CronExpr: descriptor,
 		}, nil
 
 	case "@weekly":
@@ -395,6 +403,7 @@ func parseDescriptor(descriptor string, loc *time.Location) (Schedule, error) {
 			Month:    all(months),
 			Dow:      1 << dow.min,
 			Location: loc,
+			CronExpr: descriptor,
 		}, nil
 
 	case "@daily", "@midnight":
@@ -406,6 +415,7 @@ func parseDescriptor(descriptor string, loc *time.Location) (Schedule, error) {
 			Month:    all(months),
 			Dow:      all(dow),
 			Location: loc,
+			CronExpr: descriptor,
 		}, nil
 
 	case "@hourly":
@@ -417,6 +427,7 @@ func parseDescriptor(descriptor string, loc *time.Location) (Schedule, error) {
 			Month:    all(months),
 			Dow:      all(dow),
 			Location: loc,
+			CronExpr: descriptor,
 		}, nil
 
 	}
@@ -432,3 +443,4 @@ func parseDescriptor(descriptor string, loc *time.Location) (Schedule, error) {
 
 	return nil, fmt.Errorf("unrecognized descriptor: %s", descriptor)
 }
+
