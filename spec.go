@@ -1,6 +1,9 @@
 package cron
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // SpecSchedule specifies a duty cycle (to the second granularity), based on a
 // traditional crontab specification. It is computed initially and stored as bit sets.
@@ -9,6 +12,9 @@ type SpecSchedule struct {
 
 	// Override location for this schedule.
 	Location *time.Location
+
+	// Cron Expression for this schedule
+	CronExpr string
 }
 
 // bounds provides a range of acceptable values (plus a map of name to value).
@@ -86,6 +92,18 @@ func (s *SpecSchedule) Next(t time.Time) time.Time {
 
 	// If no time is found within five years, return zero.
 	yearLimit := t.Year() + 5
+
+	// check if last day of month is present in cron spec, if so, update the bits as per current month
+	edom := false
+	fields := strings.Fields(s.CronExpr)
+
+	for idx := range fields {
+		if fields[idx] == "L" {
+			edom = true
+			s.Dom = getBits(1, uint(ldom(t)), 1)
+			break
+		}
+	}
 
 WRAP:
 	if t.Year() > yearLimit {
@@ -171,6 +189,13 @@ WRAP:
 		}
 	}
 
+	if edom {
+		year, month, _ := t.In(origLocation).Date()
+		h, m, s := t.In(origLocation).Clock()
+
+		return time.Date(year, month+1, 0, h, m, s, 0, origLocation)
+	}
+
 	return t.In(origLocation)
 }
 
@@ -185,4 +210,29 @@ func dayMatches(s *SpecSchedule, t time.Time) bool {
 		return domMatch && dowMatch
 	}
 	return domMatch || dowMatch
+}
+
+// ldom returns the last day of the month in the specified time object
+func ldom(t time.Time) int {
+
+	var (
+		eom      int
+		leapYear int
+	)
+
+	year := t.Year()
+	if (year%4 == 0 && year%100 != 0) || year%400 == 0 {
+		leapYear = 1
+	}
+
+	switch t.Month() {
+	case time.April, time.June, time.September, time.November:
+		eom = 30
+	case time.February:
+		eom = 28 + leapYear
+	default:
+		eom = 31
+	}
+
+	return eom
 }
