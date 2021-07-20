@@ -43,3 +43,10 @@ func WithLogger(logger Logger) Option {
 		c.logger = logger
 	}
 }
+
+// WithInitialTime sets the Time to begin scheduling from.
+func WithInitialTime(t time.Time) Option {
+	return func(c *Cron) {
+		c.scheduleFrom = t
+	}
+}
