@@ -2,7 +2,6 @@ package cron
 
 import (
 	"context"
-	"sort"
 	"sync"
 	"time"
 )
@@ -74,12 +73,10 @@ type Entry struct {
 // Valid returns true if this is not the zero entry.
 func (e Entry) Valid() bool { return e.ID != 0 }
 
-// byTime is a wrapper for sorting the entry array by time
+// byTime is a wrapper for get the minimum entry index from the array by time
 // (with zero time at the end).
 type byTime []*Entry
 
-func (s byTime) Len() int      { return len(s) }
-func (s byTime) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 func (s byTime) Less(i, j int) bool {
 	// Two zero times should return false.
 	// Otherwise, zero is "greater" than any other time.
@@ -91,6 +88,17 @@ func (s byTime) Less(i, j int) bool {
 		return true
 	}
 	return s[i].Next.Before(s[j].Next)
+}
+
+// Get the minimum entry index from the array by time
+func (s byTime) Min() int {
+	min := 0
+	for i := range s {
+		if s.Less(i, min) {
+			min = i
+		}
+	}
+	return min
 }
 
 // New returns a new Cron job runner, modified by the given options.
@@ -248,15 +256,15 @@ func (c *Cron) run() {
 
 	for {
 		// Determine the next entry to run.
-		sort.Sort(byTime(c.entries))
+		min := byTime(c.entries).Min()
 
 		var timer *time.Timer
-		if len(c.entries) == 0 || c.entries[0].Next.IsZero() {
+		if len(c.entries) == 0 || c.entries[min].Next.IsZero() {
 			// If there are no entries yet, just sleep - it still handles new entries
 			// and stop requests.
 			timer = time.NewTimer(100000 * time.Hour)
 		} else {
-			timer = time.NewTimer(c.entries[0].Next.Sub(now))
+			timer = time.NewTimer(c.entries[min].Next.Sub(now))
 		}
 
 		for {
