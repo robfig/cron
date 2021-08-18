@@ -11,19 +11,20 @@ import (
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
-	entries   []*Entry
-	chain     Chain
-	stop      chan struct{}
-	add       chan *Entry
-	remove    chan EntryID
-	snapshot  chan chan []Entry
-	running   bool
-	logger    Logger
-	runningMu sync.Mutex
-	location  *time.Location
-	parser    ScheduleParser
-	nextID    EntryID
-	jobWaiter sync.WaitGroup
+	entries       []*Entry
+	chain         Chain
+	timedJobchain TimedJobChain
+	stop          chan struct{}
+	add           chan *Entry
+	remove        chan EntryID
+	snapshot      chan chan []Entry
+	running       bool
+	logger        Logger
+	runningMu     sync.Mutex
+	location      *time.Location
+	parser        ScheduleParser
+	nextID        EntryID
+	jobWaiter     sync.WaitGroup
 }
 
 // ScheduleParser is an interface for schedule spec parsers that return a Schedule
@@ -34,6 +35,11 @@ type ScheduleParser interface {
 // Job is an interface for submitted cron jobs.
 type Job interface {
 	Run()
+}
+
+// TimedJob is an interface for submitted cron jobs which accept trigger time
+type TimedJob interface {
+	Run(time.Time)
 }
 
 // Schedule describes a job's duty cycle.
@@ -69,6 +75,14 @@ type Entry struct {
 	// It is kept around so that user code that needs to get at the job later,
 	// e.g. via Entries() can do so.
 	Job Job
+
+	// WrappedTimedJob is the thing to run when the Schedule is activated.
+	WrappedTimedJob TimedJob
+
+	// TimedJob is the thing that was submitted to cron which accepts trigger time
+	// It is kept around so that user code that needs to get at the job later,
+	// e.g. via Entries() can do so.
+	TimedJob TimedJob
 }
 
 // Valid returns true if this is not the zero entry.
@@ -135,11 +149,23 @@ type FuncJob func()
 
 func (f FuncJob) Run() { f() }
 
+// TimedFuncJob is a wrapper that turns a func(time.Time) into a cron.TimedJob
+type TimedFuncJob func(time.Time)
+
+func (f TimedFuncJob) Run(triggerTime time.Time) { f(triggerTime) }
+
 // AddFunc adds a func to the Cron to be run on the given schedule.
 // The spec is parsed using the time zone of this Cron instance as the default.
 // An opaque ID is returned that can be used to later remove it.
 func (c *Cron) AddFunc(spec string, cmd func()) (EntryID, error) {
 	return c.AddJob(spec, FuncJob(cmd))
+}
+
+// AddFunc adds a func to the Cron to be run on the given schedule.
+// The spec is parsed using the time zone of this Cron instance as the default.
+// An opaque ID is returned that can be used to later remove it.
+func (c *Cron) AddTimedFunc(spec string, cmd func(time.Time)) (EntryID, error) {
+	return c.AddTimedJob(spec, TimedFuncJob(cmd))
 }
 
 // AddJob adds a Job to the Cron to be run on the given schedule.
@@ -153,6 +179,17 @@ func (c *Cron) AddJob(spec string, cmd Job) (EntryID, error) {
 	return c.Schedule(schedule, cmd), nil
 }
 
+// AddTimedJob adds a Job to the Cron to be run on the given schedule.
+// The spec is parsed using the time zone of this Cron instance as the default.
+// An opaque ID is returned that can be used to later remove it.
+func (c *Cron) AddTimedJob(spec string, cmd TimedJob) (EntryID, error) {
+	schedule, err := c.parser.Parse(spec)
+	if err != nil {
+		return 0, err
+	}
+	return c.ScheduleTimedJob(schedule, cmd), nil
+}
+
 // Schedule adds a Job to the Cron to be run on the given schedule.
 // The job is wrapped with the configured Chain.
 func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
@@ -164,6 +201,26 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
 		Schedule:   schedule,
 		WrappedJob: c.chain.Then(cmd),
 		Job:        cmd,
+	}
+	if !c.running {
+		c.entries = append(c.entries, entry)
+	} else {
+		c.add <- entry
+	}
+	return entry.ID
+}
+
+// ScheduleTimedJob adds a Job to the Cron to be run on the given schedule.
+// The job is wrapped with the configured Chain.
+func (c *Cron) ScheduleTimedJob(schedule Schedule, cmd TimedJob) EntryID {
+	c.runningMu.Lock()
+	defer c.runningMu.Unlock()
+	c.nextID++
+	entry := &Entry{
+		ID:              c.nextID,
+		Schedule:        schedule,
+		WrappedTimedJob: c.timedJobchain.Then(cmd),
+		TimedJob:        cmd,
 	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
@@ -270,7 +327,11 @@ func (c *Cron) run() {
 					if e.Next.After(now) || e.Next.IsZero() {
 						break
 					}
-					c.startJob(e.WrappedJob)
+					if e.TimedJob != nil {
+						c.startTimedJob(e.WrappedTimedJob, e.Next)
+					} else {
+						c.startJob(e.WrappedJob)
+					}
 					e.Prev = e.Next
 					e.Next = e.Schedule.Next(now)
 					c.logger.Info("run", "now", now, "entry", e.ID, "next", e.Next)
@@ -304,12 +365,21 @@ func (c *Cron) run() {
 	}
 }
 
-// startJob runs the given job in a new goroutine.
+// startJob runs the given job in a new goroutine. Optionally pass in triggerTime which can be used by the called function.
 func (c *Cron) startJob(j Job) {
 	c.jobWaiter.Add(1)
 	go func() {
 		defer c.jobWaiter.Done()
 		j.Run()
+	}()
+}
+
+// startJob runs the given job in a new goroutine. Optionally pass in triggerTime which can be used by the called function.
+func (c *Cron) startTimedJob(j TimedJob, triggerTime time.Time) {
+	c.jobWaiter.Add(1)
+	go func() {
+		defer c.jobWaiter.Done()
+		j.Run(triggerTime)
 	}()
 }
 
