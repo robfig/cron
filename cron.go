@@ -11,19 +11,20 @@ import (
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
-	entries   []*Entry
-	chain     Chain
-	stop      chan struct{}
-	add       chan *Entry
-	remove    chan EntryID
-	snapshot  chan chan []Entry
-	running   bool
-	logger    Logger
-	runningMu sync.Mutex
-	location  *time.Location
-	parser    ScheduleParser
-	nextID    EntryID
-	jobWaiter sync.WaitGroup
+	entries     []*Entry
+	chain       Chain
+	stop        chan struct{}
+	add         chan *Entry
+	remove      chan EntryID
+	snapshot    chan chan []Entry
+	running     bool
+	logger      Logger
+	runningMu   sync.Mutex
+	location    *time.Location
+	parser      ScheduleParser
+	immediately bool
+	nextID      EntryID
+	jobWaiter   sync.WaitGroup
 }
 
 // ScheduleParser is an interface for schedule spec parsers that return a Schedule
@@ -242,7 +243,11 @@ func (c *Cron) run() {
 	// Figure out the next activation times for each entry.
 	now := c.now()
 	for _, entry := range c.entries {
-		entry.Next = entry.Schedule.Next(now)
+		if c.immediately {
+			entry.Next = now
+		} else {
+			entry.Next = entry.Schedule.Next(now)
+		}
 		c.logger.Info("schedule", "now", now, "entry", entry.ID, "next", entry.Next)
 	}
 
