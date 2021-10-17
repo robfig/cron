@@ -43,3 +43,10 @@ func WithLogger(logger Logger) Option {
 		c.logger = logger
 	}
 }
+
+// WithRunImmediately will run all jobs immediately while the cron starts
+func WithRunImmediately() Option {
+	return func(c *Cron) {
+		c.immediately = true
+	}
+}
