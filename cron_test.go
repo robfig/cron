@@ -2,6 +2,7 @@ package cron
 
 import (
 	"bytes"
+	"container/heap"
 	"fmt"
 	"log"
 	"strings"
@@ -266,7 +267,7 @@ func TestRunningJobTwice(t *testing.T) {
 
 	select {
 	case <-time.After(2 * OneSecond):
-		t.Error("expected job fires 2 times")
+		t.Errorf("now:%v expected job fires 2 times", time.Now())
 	case <-wait(wg):
 	}
 }
@@ -288,7 +289,7 @@ func TestRunningMultipleSchedules(t *testing.T) {
 
 	select {
 	case <-time.After(2 * OneSecond):
-		t.Error("expected job fires 2 times")
+		t.Errorf("now:%v expected job fires 2 times", time.Now())
 	case <-wait(wg):
 	}
 }
@@ -316,7 +317,7 @@ func TestLocalTimezone(t *testing.T) {
 
 	select {
 	case <-time.After(OneSecond * 2):
-		t.Error("expected job fires 2 times")
+		t.Errorf("expected job fires 2 times, now:%v", time.Now())
 	case <-wait(wg):
 	}
 }
@@ -466,10 +467,16 @@ func TestJob(t *testing.T) {
 	expecteds := []string{"job2", "job4", "job5", "job1", "job3", "job0"}
 
 	var actuals []string
-	for _, entry := range cron.Entries() {
+	//for _, entry := range cron.Entries() {
+	//	actuals = append(actuals, entry.Job.(testJob).name)
+	//}
+	clone := new(EntryHeap)
+	for len(cron.entries) > 0 {
+		entry := heap.Pop(&cron.entries).(*Entry)
 		actuals = append(actuals, entry.Job.(testJob).name)
+		heap.Push(clone, entry)
 	}
-
+	cron.entries = *clone
 	for i, expected := range expecteds {
 		if actuals[i] != expected {
 			t.Fatalf("Jobs not in the right order.  (expected) %s != %s (actual)", expecteds, actuals)
