@@ -71,11 +71,36 @@ func TestActivation(t *testing.T) {
 	}
 }
 
+func TestNextTemp(t *testing.T) {
+	runs := []struct {
+		time, spec string
+		expected   string
+	}{
+
+		// Leap year
+		{"Mon Jul 9 23:35 2012", "0 0 0 29 Feb ?", "Mon Feb 29 00:00 2016"},
+	}
+
+	for _, c := range runs {
+		sched, err := secondParser.Parse(c.spec)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		actual := sched.Next(getTime(c.time))
+		expected := getTime(c.expected)
+		if !actual.Equal(expected) {
+			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.spec, expected, actual)
+		}
+	}
+}
+
 func TestNext(t *testing.T) {
 	runs := []struct {
 		time, spec string
 		expected   string
 	}{
+
 		// Simple cases
 		{"Mon Jul 9 14:45 2012", "0 0/15 * * * *", "Mon Jul 9 15:00 2012"},
 		{"Mon Jul 9 14:59 2012", "0 0/15 * * * *", "Mon Jul 9 15:00 2012"},
@@ -192,6 +217,43 @@ func TestNext(t *testing.T) {
 			continue
 		}
 		actual := sched.Next(getTime(c.time))
+		expected := getTime(c.expected)
+		if !actual.Equal(expected) {
+			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.spec, expected, actual)
+		}
+	}
+}
+
+func TestPrev(t *testing.T) {
+	runs := []struct {
+		time, spec string
+		expected   string
+	}{
+		// Simple cases
+		//		{"Mon Jul 9 15:00 2012", "0 0/15 * * * *", "Mon Jul 9 14:45 2012"},
+		//		{"Mon Jul 9 14:59 2012", "0 0/15 * * * *", "Mon Jul 9 14:45 2012"},
+		//		{"Mon Jul 9 15:01:59 2012", "0 0/15 * * * *", "Mon Jul 9 15:00 2012"},
+
+		// Wrap around hours
+		//		{"Mon Jul 9 15:10 2012", "0 20-35/15 * * * *", "Mon Jul 9 14:35 2012"},
+
+		// Wrap around days
+		//		{"Tue Jul 10 00:00 2012", "0 */15 * * * *", "Tue Jul 9 23:45 2012"},
+		//		{"Tue Jul 10 00:00 2012", "0 20-35/15 * * * *", "Tue Jul 9 23:35 2012"},
+
+		// Leap year
+		{"Mon Jul 9 23:35 2018", "0 0 0 29 Feb ?", "Mon Feb 29 00:00 2016"},
+	}
+
+	for _, c := range runs {
+		sched, err := secondParser.Parse(c.spec)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		specSchedule, _ := sched.(*SpecSchedule)
+
+		actual := specSchedule.Prev(getTime(c.time))
 		expected := getTime(c.expected)
 		if !actual.Equal(expected) {
 			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.spec, expected, actual)

@@ -1,6 +1,9 @@
 package cron
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // SpecSchedule specifies a duty cycle (to the second granularity), based on a
 // traditional crontab specification. It is computed initially and stored as bit sets.
@@ -100,8 +103,10 @@ WRAP:
 			added = true
 			// Otherwise, set the date at the beginning (since the current time is irrelevant).
 			t = time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, loc)
+			fmt.Printf("t: %v, added was false (month)\n", t)
 		}
 		t = t.AddDate(0, 1, 0)
+		fmt.Printf("t: %v, added month\n", t)
 
 		// Wrapped around.
 		if t.Month() == time.January {
@@ -118,8 +123,10 @@ WRAP:
 		if !added {
 			added = true
 			t = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
+			fmt.Printf("t: %v, added was false (day)\n", t)
 		}
 		t = t.AddDate(0, 0, 1)
+		fmt.Printf("t: %v, added day\n", t)
 		// Notice if the hour is no longer midnight due to DST.
 		// Add an hour if it's 23, subtract an hour if it's 1.
 		if t.Hour() != 0 {
@@ -139,8 +146,10 @@ WRAP:
 		if !added {
 			added = true
 			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, loc)
+			fmt.Printf("t: %v, added was false (hour)\n", t)
 		}
 		t = t.Add(1 * time.Hour)
+		fmt.Printf("t: %v, added hour\n", t)
 
 		if t.Hour() == 0 {
 			goto WRAP
@@ -151,8 +160,10 @@ WRAP:
 		if !added {
 			added = true
 			t = t.Truncate(time.Minute)
+			fmt.Printf("t: %v, added was false (minute)\n", t)
 		}
 		t = t.Add(1 * time.Minute)
+		fmt.Printf("t: %v, added minute\n", t)
 
 		if t.Minute() == 0 {
 			goto WRAP
@@ -163,8 +174,10 @@ WRAP:
 		if !added {
 			added = true
 			t = t.Truncate(time.Second)
+			fmt.Printf("t: %v, added was false (second)\n", t)
 		}
 		t = t.Add(1 * time.Second)
+		fmt.Printf("t: %v, added second\n", t)
 
 		if t.Second() == 0 {
 			goto WRAP
@@ -214,6 +227,7 @@ WRAP:
 		// TODO: is there a case in which we don't want to set this to the last possible second of that month?
 		t = time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, loc)
 		t = t.Add(-1 * time.Second)
+		//fmt.Printf("t: %v, last second of previous month\n", t)
 
 		// Wrapped around.
 		if t.Month() == time.December {
@@ -232,19 +246,12 @@ WRAP:
 			//t = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
 		}*/
 		// set t to the last second of the previous day
+		saveMonth := t.Month()
 		t = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
 		t = t.Add(-1 * time.Second)
-		// Notice if the hour is no longer midnight due to DST.
-		// Add an hour if it's 23, subtract an hour if it's 1.
-		if t.Hour() != 0 {
-			if t.Hour() > 12 {
-				t = t.Add(time.Duration(24-t.Hour()) * time.Hour)
-			} else {
-				t = t.Add(time.Duration(-t.Hour()) * time.Hour)
-			}
-		}
+		//fmt.Printf("t: %v, last second of previous day\n", t)
 
-		if t.Day() == lastDayOfMonth(t.Month()) {
+		if saveMonth != t.Month() {
 			goto WRAP
 		}
 	}
@@ -257,6 +264,7 @@ WRAP:
 		// set t to the last second of the previous hour
 		t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, loc)
 		t = t.Add(-1 * time.Second)
+		//fmt.Printf("t: %v, last second of previous hour\n", t)
 
 		if t.Hour() == 23 {
 			goto WRAP
@@ -267,6 +275,7 @@ WRAP:
 		// set t to the last second of the previous minute
 		t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), 0, 0, loc)
 		t = t.Add(-1 * time.Second)
+		//fmt.Printf("t: %v, last second of previous minute\n", t)
 
 		if t.Minute() == 59 {
 			goto WRAP
@@ -276,12 +285,14 @@ WRAP:
 	for 1<<uint(t.Second())&s.Second == 0 {
 		// set t to the previous second
 		t = t.Add(-1 * time.Second)
+		//fmt.Printf("t: %v, last second\n", t)
 
 		if t.Second() == 59 {
 			goto WRAP
 		}
 	}
 
+	fmt.Println(t)
 	return t.In(origLocation)
 }
 
