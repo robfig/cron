@@ -242,8 +242,6 @@ func TestPrev(t *testing.T) {
 
 		// Monthly job
 		{"TZ=America/New_York 2012-12-03T00:00:00-0500", "0 0 3 3 * ?", "2012-11-03T03:00:00-0400"},
-
-		{"2018-10-17T05:00:00-0400", "TZ=America/Sao_Paulo 0 0 9 10 * ?", "2018-11-10T06:00:00-0500"},
 	}
 
 	for _, c := range runs {
