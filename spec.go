@@ -221,6 +221,17 @@ WRAP:
 		// set t to the last second of the previous day
 		saveMonth := t.Month()
 		t = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
+
+		// Notice if the hour is no longer midnight due to DST.
+		// Add an hour if it's 23, subtract an hour if it's 1.
+		if t.Hour() != 0 {
+			if t.Hour() > 12 {
+				t = t.Add(time.Duration(24-t.Hour()) * time.Hour)
+			} else {
+				t = t.Add(time.Duration(-t.Hour()) * time.Hour)
+			}
+		}
+
 		t = t.Add(-1 * time.Second)
 
 		if saveMonth != t.Month() {
