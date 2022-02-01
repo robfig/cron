@@ -1,8 +1,6 @@
 package cron
 
-import (
-	"time"
-)
+import "time"
 
 // SpecSchedule specifies a duty cycle (to the second granularity), based on a
 // traditional crontab specification. It is computed initially and stored as bit sets.
