@@ -103,10 +103,8 @@ WRAP:
 			added = true
 			// Otherwise, set the date at the beginning (since the current time is irrelevant).
 			t = time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, loc)
-			fmt.Printf("t: %v, added was false (month)\n", t)
 		}
 		t = t.AddDate(0, 1, 0)
-		fmt.Printf("t: %v, added month\n", t)
 
 		// Wrapped around.
 		if t.Month() == time.January {
@@ -123,10 +121,8 @@ WRAP:
 		if !added {
 			added = true
 			t = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
-			fmt.Printf("t: %v, added was false (day)\n", t)
 		}
 		t = t.AddDate(0, 0, 1)
-		fmt.Printf("t: %v, added day\n", t)
 		// Notice if the hour is no longer midnight due to DST.
 		// Add an hour if it's 23, subtract an hour if it's 1.
 		if t.Hour() != 0 {
@@ -146,10 +142,8 @@ WRAP:
 		if !added {
 			added = true
 			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, loc)
-			fmt.Printf("t: %v, added was false (hour)\n", t)
 		}
 		t = t.Add(1 * time.Hour)
-		fmt.Printf("t: %v, added hour\n", t)
 
 		if t.Hour() == 0 {
 			goto WRAP
@@ -160,10 +154,8 @@ WRAP:
 		if !added {
 			added = true
 			t = t.Truncate(time.Minute)
-			fmt.Printf("t: %v, added was false (minute)\n", t)
 		}
 		t = t.Add(1 * time.Minute)
-		fmt.Printf("t: %v, added minute\n", t)
 
 		if t.Minute() == 0 {
 			goto WRAP
@@ -174,10 +166,8 @@ WRAP:
 		if !added {
 			added = true
 			t = t.Truncate(time.Second)
-			fmt.Printf("t: %v, added was false (second)\n", t)
 		}
 		t = t.Add(1 * time.Second)
-		fmt.Printf("t: %v, added second\n", t)
 
 		if t.Second() == 0 {
 			goto WRAP
@@ -204,9 +194,6 @@ func (s *SpecSchedule) Prev(t time.Time) time.Time {
 	// Start at the previous second
 	t = t.Add(-1*time.Second - time.Duration(t.Nanosecond())*time.Nanosecond)
 
-	// This flag indicates whether a field has been decremented.
-	//added := false
-
 	// If no time is found within five years, return zero.
 	yearLimit := t.Year() - 5
 
@@ -218,16 +205,9 @@ WRAP:
 	// Find the first applicable month.
 	// If it's this month, then do nothing.
 	for 1<<uint(t.Month())&s.Month == 0 {
-		/*if !added {
-			added = true
-			// set the date to the last second of the month
-			//t = ?
-		}*/
 		// set t to the last second of the previous month
-		// TODO: is there a case in which we don't want to set this to the last possible second of that month?
 		t = time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, loc)
 		t = t.Add(-1 * time.Second)
-		//fmt.Printf("t: %v, last second of previous month\n", t)
 
 		// Wrapped around.
 		if t.Month() == time.December {
@@ -241,15 +221,10 @@ WRAP:
 	// not exist.  For example: Sao Paulo has DST that transforms midnight on
 	// 11/3 into 1am. Handle that by noticing when the Hour ends up != 0.
 	for !dayMatches(s, t) {
-		/*if !added {
-			added = true
-			//t = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
-		}*/
 		// set t to the last second of the previous day
 		saveMonth := t.Month()
 		t = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
 		t = t.Add(-1 * time.Second)
-		//fmt.Printf("t: %v, last second of previous day\n", t)
 
 		if saveMonth != t.Month() {
 			goto WRAP
@@ -257,14 +232,9 @@ WRAP:
 	}
 
 	for 1<<uint(t.Hour())&s.Hour == 0 {
-		/*if !added {
-			added = true
-			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, loc)
-		}*/
 		// set t to the last second of the previous hour
 		t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, loc)
 		t = t.Add(-1 * time.Second)
-		//fmt.Printf("t: %v, last second of previous hour\n", t)
 
 		if t.Hour() == 23 {
 			goto WRAP
@@ -275,7 +245,6 @@ WRAP:
 		// set t to the last second of the previous minute
 		t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), 0, 0, loc)
 		t = t.Add(-1 * time.Second)
-		//fmt.Printf("t: %v, last second of previous minute\n", t)
 
 		if t.Minute() == 59 {
 			goto WRAP
@@ -285,7 +254,6 @@ WRAP:
 	for 1<<uint(t.Second())&s.Second == 0 {
 		// set t to the previous second
 		t = t.Add(-1 * time.Second)
-		//fmt.Printf("t: %v, last second\n", t)
 
 		if t.Second() == 59 {
 			goto WRAP
