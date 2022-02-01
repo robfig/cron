@@ -1,7 +1,6 @@
 package cron
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -260,7 +259,6 @@ WRAP:
 		}
 	}
 
-	fmt.Println(t)
 	return t.In(origLocation)
 }
 
