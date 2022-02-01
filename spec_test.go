@@ -71,30 +71,6 @@ func TestActivation(t *testing.T) {
 	}
 }
 
-func TestNextTemp(t *testing.T) {
-	runs := []struct {
-		time, spec string
-		expected   string
-	}{
-
-		// Leap year
-		{"Mon Jul 9 23:35 2012", "0 0 0 29 Feb ?", "Mon Feb 29 00:00 2016"},
-	}
-
-	for _, c := range runs {
-		sched, err := secondParser.Parse(c.spec)
-		if err != nil {
-			t.Error(err)
-			continue
-		}
-		actual := sched.Next(getTime(c.time))
-		expected := getTime(c.expected)
-		if !actual.Equal(expected) {
-			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.spec, expected, actual)
-		}
-	}
-}
-
 func TestNext(t *testing.T) {
 	runs := []struct {
 		time, spec string
@@ -253,9 +229,21 @@ func TestPrev(t *testing.T) {
 		// hourly job
 		{"2012-03-11T01:00:00-0500", "TZ=America/New_York 0 0 * * * ?", "2012-03-11T00:00:00-0500"},
 
+		// 2am nightly job (skipped)
+		{"2012-03-12T00:00:00-0400", "TZ=America/New_York 0 0 2 * * ?", "2012-03-10T02:00:00-0500"},
+
 		// 2am nightly job
 		{"2012-11-04T02:00:00-0500", "TZ=America/New_York 0 0 0 * * ?", "2012-11-04T00:00:00-0400"},
 		{"2012-11-05T02:00:00-0500", "TZ=America/New_York 0 0 2 * * ?", "2012-11-04T02:00:00-0500"},
+
+		// Unsatisfiable
+		{"Mon Jul 9 23:35 2012", "0 0 0 30 Feb ?", ""},
+		{"Mon Jul 9 23:35 2012", "0 0 0 31 Apr ?", ""},
+
+		// Monthly job
+		{"TZ=America/New_York 2012-12-03T00:00:00-0500", "0 0 3 3 * ?", "2012-11-03T03:00:00-0400"},
+
+		{"2018-10-17T05:00:00-0400", "TZ=America/Sao_Paulo 0 0 9 10 * ?", "2018-11-10T06:00:00-0500"},
 	}
 
 	for _, c := range runs {
