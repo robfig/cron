@@ -52,3 +52,37 @@ func TestConstantDelayNext(t *testing.T) {
 		}
 	}
 }
+
+func TestConstantDelayPrev(t *testing.T) {
+	tests := []struct {
+		time     string
+		delay    time.Duration
+		expected string
+	}{
+		// Simple cases
+		{"Mon Jul 9 14:45 2012", 15*time.Minute + 50*time.Nanosecond, "Mon Jul 9 14:30 2012"},
+		{"Mon Jul 9 14:59 2012", 15 * time.Minute, "Mon Jul 9 14:44 2012"},
+
+		// Wrap around days
+		{"Tue Jul 10 00:00 2012", 14 * time.Minute, "Mon Jul 9 23:46 2012"},
+		{"Tue Jul 10 00:20:15 2012", 44*time.Minute + 24*time.Second, "Mon Jul 9 23:35:51 2012"},
+		{"Thu Jul 11 01:20:15 2012", 25*time.Hour + 44*time.Minute + 24*time.Second, "Mon Jul 9 23:35:51 2012"},
+
+		// Wrap around minute, hour, day, month, and year
+		{"Tue Jan 1 00:00:00 2013", 15 * time.Second, "Mon Dec 31 23:59:45 2012"},
+
+		// Round to nearest second on the delay
+		{"Mon Jul 9 15:00 2012", 15*time.Minute + 50*time.Nanosecond, "Mon Jul 9 14:45 2012"},
+
+		// Round to second when calculating the prev time.
+		{"Mon Jul 9 15:00:00.005 2012", 15 * time.Minute, "Mon Jul 9 14:45:00 2012"},
+	}
+
+	for _, c := range tests {
+		actual := Every(c.delay).Prev(getTime(c.time))
+		expected := getTime(c.expected)
+		if actual != expected {
+			t.Errorf("%s, \"%s\": (expected) %v != %v (actual)", c.time, c.delay, expected, actual)
+		}
+	}
+}
