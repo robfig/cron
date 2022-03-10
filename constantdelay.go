@@ -1,6 +1,8 @@
 package cron
 
-import "time"
+import (
+	"time"
+)
 
 // ConstantDelaySchedule represents a simple recurring duty cycle, e.g. "Every 5 minutes".
 // It does not support jobs more frequent than once a second.
@@ -24,4 +26,11 @@ func Every(duration time.Duration) ConstantDelaySchedule {
 // This rounds so that the next activation time will be on the second.
 func (schedule ConstantDelaySchedule) Next(t time.Time) time.Time {
 	return t.Add(schedule.Delay - time.Duration(t.Nanosecond())*time.Nanosecond)
+}
+
+// Prev returns the previous time this would have been run
+// This rounds to nearest second.
+func (schedule ConstantDelaySchedule) Prev(t time.Time) time.Time {
+	t = t.Add(-time.Duration(t.Nanosecond()) * time.Nanosecond)
+	return t.Add(-schedule.Delay)
 }
