@@ -74,6 +74,17 @@ type Entry struct {
 // Valid returns true if this is not the zero entry.
 func (e Entry) Valid() bool { return e.ID != 0 }
 
+// ScheduleFirst is used for the initial scheduling. If a Prev value has been
+// included with the Entry, it will be used in place of "now" to allow schedules
+// to be preserved across process restarts.
+func (e Entry) ScheduleFirst(now time.Time) time.Time {
+	if !e.Prev.IsZero() {
+		return e.Schedule.Next(e.Prev)
+	} else {
+		return e.Schedule.Next(now)
+	}
+}
+
 // byTime is a wrapper for sorting the entry array by time
 // (with zero time at the end).
 type byTime []*Entry
@@ -138,24 +149,24 @@ func (f FuncJob) Run() { f() }
 // AddFunc adds a func to the Cron to be run on the given schedule.
 // The spec is parsed using the time zone of this Cron instance as the default.
 // An opaque ID is returned that can be used to later remove it.
-func (c *Cron) AddFunc(spec string, cmd func()) (EntryID, error) {
-	return c.AddJob(spec, FuncJob(cmd))
+func (c *Cron) AddFunc(spec string, cmd func(), entryOpts ...EntryOption) (EntryID, error) {
+	return c.AddJob(spec, FuncJob(cmd), entryOpts...)
 }
 
 // AddJob adds a Job to the Cron to be run on the given schedule.
 // The spec is parsed using the time zone of this Cron instance as the default.
 // An opaque ID is returned that can be used to later remove it.
-func (c *Cron) AddJob(spec string, cmd Job) (EntryID, error) {
+func (c *Cron) AddJob(spec string, cmd Job, entryOpts ...EntryOption) (EntryID, error) {
 	schedule, err := c.parser.Parse(spec)
 	if err != nil {
 		return 0, err
 	}
-	return c.Schedule(schedule, cmd), nil
+	return c.Schedule(schedule, cmd, entryOpts...), nil
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
 // The job is wrapped with the configured Chain.
-func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
+func (c *Cron) Schedule(schedule Schedule, cmd Job, entryOpts ...EntryOption) EntryID {
 	c.runningMu.Lock()
 	defer c.runningMu.Unlock()
 	c.nextID++
@@ -165,12 +176,27 @@ func (c *Cron) Schedule(schedule Schedule, cmd Job) EntryID {
 		WrappedJob: c.chain.Then(cmd),
 		Job:        cmd,
 	}
+	for _, fn := range entryOpts {
+		fn(entry)
+	}
 	if !c.running {
 		c.entries = append(c.entries, entry)
 	} else {
 		c.add <- entry
 	}
 	return entry.ID
+}
+
+// EntryOption is a hook which allows the Entry to be altered before being
+// committed internally.
+type EntryOption func(*Entry)
+
+// EntryPrev allows setting the Prev time to allow interval-based schedules to
+// preserve their timeline even in the face of process restarts.
+func WithPrev(prev time.Time) EntryOption {
+	return func(e *Entry) {
+		e.Prev = prev
+	}
 }
 
 // Entries returns a snapshot of the cron entries.
@@ -242,7 +268,7 @@ func (c *Cron) run() {
 	// Figure out the next activation times for each entry.
 	now := c.now()
 	for _, entry := range c.entries {
-		entry.Next = entry.Schedule.Next(now)
+		entry.Next = entry.ScheduleFirst(now)
 		c.logger.Info("schedule", "now", now, "entry", entry.ID, "next", entry.Next)
 	}
 
@@ -279,7 +305,7 @@ func (c *Cron) run() {
 			case newEntry := <-c.add:
 				timer.Stop()
 				now = c.now()
-				newEntry.Next = newEntry.Schedule.Next(now)
+				newEntry.Next = newEntry.ScheduleFirst(now)
 				c.entries = append(c.entries, newEntry)
 				c.logger.Info("added", "now", now, "entry", newEntry.ID, "next", newEntry.Next)
 
