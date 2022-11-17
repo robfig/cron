@@ -1,0 +1,4 @@
+github.com/benbjohnson/clock v1.3.0 h1:ip6w0uFQkncKQ979AypyG0ER7mqUSBdKLOgAle/AT8A=
+github.com/benbjohnson/clock v1.3.0/go.mod h1:J11/hYXuz8f4ySSvYwY0FKfm+ezbsZBKZxNJlLklBHA=
+github.com/mixer/clock v0.0.0-20190507173039-c311c17adb1f h1:GVMwQJIugRbOBgPK5RvPdvKPCxFex4bx+MUj2oG70XI=
+github.com/mixer/clock v0.0.0-20190507173039-c311c17adb1f/go.mod h1:U8TDygO2XZh1RtBCgX7oRbJ7gmSH4C6FROsBdQ6QyCc=

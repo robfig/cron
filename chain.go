@@ -5,6 +5,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/benbjohnson/clock"
 )
 
 // JobWrapper decorates the given Job with some behavior.
@@ -59,13 +61,19 @@ func Recover(logger Logger) JobWrapper {
 // previous one is complete. Jobs running after a delay of more than a minute
 // have the delay logged at Info.
 func DelayIfStillRunning(logger Logger) JobWrapper {
+	return DelayIfStillRunningWithClock(logger, clock.New())
+}
+
+// DelayIfStillRunningWithClock behaves identically to DelayIfStillRunning but
+// uses the provided Clock for measuring the delay, for use in testing.
+func DelayIfStillRunningWithClock(logger Logger, clk clock.Clock) JobWrapper {
 	return func(j Job) Job {
 		var mu sync.Mutex
 		return FuncJob(func() {
-			start := time.Now()
+			start := clk.Now()
 			mu.Lock()
 			defer mu.Unlock()
-			if dur := time.Since(start); dur > time.Minute {
+			if dur := clk.Since(start); dur > time.Minute {
 				logger.Info("delay", "duration", dur)
 			}
 			j.Run()
@@ -82,8 +90,8 @@ func SkipIfStillRunning(logger Logger) JobWrapper {
 		return FuncJob(func() {
 			select {
 			case v := <-ch:
-				defer func() { ch <- v }()
 				j.Run()
+				ch <- v
 			default:
 				logger.Info("skip")
 			}

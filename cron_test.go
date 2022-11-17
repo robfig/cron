@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/benbjohnson/clock"
 )
 
 // Many tests schedule a job for every second, and then wait at most a second
@@ -669,6 +671,25 @@ func TestStopAndWait(t *testing.T) {
 		}
 
 	})
+}
+
+func TestMockClock(t *testing.T) {
+	clk := clock.NewMock()
+	clk.Set(time.Now())
+	cron := New(WithClock(clk))
+	counter := 0
+	cron.AddFunc("@every 1s", func() {
+		counter += 1
+	})
+	cron.Start()
+	defer cron.Stop()
+	for i := 0; i <= 10; i++ {
+		clk.Add(1 * time.Second)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if counter != 10 {
+		t.Errorf("expected 10 calls, got %d", counter)
+	}
 }
 
 func TestMultiThreadedStartAndStop(t *testing.T) {

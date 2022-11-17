@@ -5,6 +5,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/benbjohnson/clock"
 )
 
 // Cron keeps track of any number of entries, invoking the associated func as
@@ -24,6 +26,7 @@ type Cron struct {
 	parser    ScheduleParser
 	nextID    EntryID
 	jobWaiter sync.WaitGroup
+	clk       clock.Clock
 }
 
 // ScheduleParser is an interface for schedule spec parsers that return a Schedule
@@ -123,6 +126,7 @@ func New(opts ...Option) *Cron {
 		logger:    DefaultLogger,
 		location:  time.Local,
 		parser:    standardParser,
+		clk:       clock.New(),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -250,13 +254,13 @@ func (c *Cron) run() {
 		// Determine the next entry to run.
 		sort.Sort(byTime(c.entries))
 
-		var timer *time.Timer
+		var timer *clock.Timer
 		if len(c.entries) == 0 || c.entries[0].Next.IsZero() {
 			// If there are no entries yet, just sleep - it still handles new entries
 			// and stop requests.
-			timer = time.NewTimer(100000 * time.Hour)
+			timer = c.clk.Timer(100000 * time.Hour)
 		} else {
-			timer = time.NewTimer(c.entries[0].Next.Sub(now))
+			timer = c.clk.Timer(c.entries[0].Next.Sub(now))
 		}
 
 		for {
@@ -315,7 +319,7 @@ func (c *Cron) startJob(j Job) {
 
 // now returns current time in c location
 func (c *Cron) now() time.Time {
-	return time.Now().In(c.location)
+	return c.clk.Now().In(c.location)
 }
 
 // Stop stops the cron scheduler if it is running; otherwise it does nothing.
