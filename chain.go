@@ -5,6 +5,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/benbjohnson/clock"
 )
 
 // JobWrapper decorates the given Job with some behavior.
@@ -24,9 +26,12 @@ func NewChain(c ...JobWrapper) Chain {
 // Then decorates the given job with all JobWrappers in the chain.
 //
 // This:
-//     NewChain(m1, m2, m3).Then(job)
+//
+//	NewChain(m1, m2, m3).Then(job)
+//
 // is equivalent to:
-//     m1(m2(m3(job)))
+//
+//	m1(m2(m3(job)))
 func (c Chain) Then(j Job) Job {
 	for i := range c.wrappers {
 		j = c.wrappers[len(c.wrappers)-i-1](j)
@@ -59,13 +64,19 @@ func Recover(logger Logger) JobWrapper {
 // previous one is complete. Jobs running after a delay of more than a minute
 // have the delay logged at Info.
 func DelayIfStillRunning(logger Logger) JobWrapper {
+	return DelayIfStillRunningWithClock(logger, clock.New())
+}
+
+// DelayIfStillRunningWithClock behaves identically to DelayIfStillRunning but
+// uses the provided Clock for measuring the delay, for use in testing.
+func DelayIfStillRunningWithClock(logger Logger, clk clock.Clock) JobWrapper {
 	return func(j Job) Job {
 		var mu sync.Mutex
 		return FuncJob(func() {
-			start := time.Now()
+			start := clk.Now()
 			mu.Lock()
 			defer mu.Unlock()
-			if dur := time.Since(start); dur > time.Minute {
+			if dur := clk.Since(start); dur > time.Minute {
 				logger.Info("delay", "duration", dur)
 			}
 			j.Run()
@@ -77,13 +88,13 @@ func DelayIfStillRunning(logger Logger) JobWrapper {
 // still running. It logs skips to the given logger at Info level.
 func SkipIfStillRunning(logger Logger) JobWrapper {
 	return func(j Job) Job {
-		var ch = make(chan struct{}, 1)
+		ch := make(chan struct{}, 1)
 		ch <- struct{}{}
 		return FuncJob(func() {
 			select {
 			case v := <-ch:
-				defer func() { ch <- v }()
 				j.Run()
+				ch <- v
 			default:
 				logger.Info("skip")
 			}

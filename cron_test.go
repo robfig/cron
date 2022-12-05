@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/benbjohnson/clock"
 )
 
 // Many tests schedule a job for every second, and then wait at most a second
@@ -388,7 +390,7 @@ func TestBlockingRun(t *testing.T) {
 	cron := newWithSeconds()
 	cron.AddFunc("* * * * * ?", func() { wg.Done() })
 
-	var unblockChan = make(chan struct{})
+	unblockChan := make(chan struct{})
 
 	go func() {
 		cron.Run()
@@ -407,7 +409,7 @@ func TestBlockingRun(t *testing.T) {
 
 // Test that double-running is a no-op
 func TestStartNoop(t *testing.T) {
-	var tickChan = make(chan struct{}, 2)
+	tickChan := make(chan struct{}, 2)
 
 	cron := newWithSeconds()
 	cron.AddFunc("* * * * * ?", func() {
@@ -667,8 +669,26 @@ func TestStopAndWait(t *testing.T) {
 		case <-time.After(time.Millisecond):
 			t.Error("context not done even when cron Stop is completed")
 		}
-
 	})
+}
+
+func TestMockClock(t *testing.T) {
+	clk := clock.NewMock()
+	clk.Set(time.Now())
+	cron := New(WithClock(clk))
+	counter := 0
+	cron.AddFunc("@every 1s", func() {
+		counter += 1
+	})
+	cron.Start()
+	defer cron.Stop()
+	for i := 0; i <= 10; i++ {
+		clk.Add(1 * time.Second)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if counter != 10 {
+		t.Errorf("expected 10 calls, got %d", counter)
+	}
 }
 
 func TestMultiThreadedStartAndStop(t *testing.T) {
