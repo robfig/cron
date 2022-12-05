@@ -119,7 +119,7 @@ func TestBits(t *testing.T) {
 }
 
 func TestParseScheduleErrors(t *testing.T) {
-	var tests = []struct{ expr, err string }{
+	tests := []struct{ expr, err string }{
 		{"* 5 j * * *", "failed to parse int from"},
 		{"@every Xm", "failed to parse duration"},
 		{"@unrecognized", "unrecognized descriptor"},

@@ -390,7 +390,7 @@ func TestBlockingRun(t *testing.T) {
 	cron := newWithSeconds()
 	cron.AddFunc("* * * * * ?", func() { wg.Done() })
 
-	var unblockChan = make(chan struct{})
+	unblockChan := make(chan struct{})
 
 	go func() {
 		cron.Run()
@@ -409,7 +409,7 @@ func TestBlockingRun(t *testing.T) {
 
 // Test that double-running is a no-op
 func TestStartNoop(t *testing.T) {
-	var tickChan = make(chan struct{}, 2)
+	tickChan := make(chan struct{}, 2)
 
 	cron := newWithSeconds()
 	cron.AddFunc("* * * * * ?", func() {
@@ -669,7 +669,6 @@ func TestStopAndWait(t *testing.T) {
 		case <-time.After(time.Millisecond):
 			t.Error("context not done even when cron Stop is completed")
 		}
-
 	})
 }
 
