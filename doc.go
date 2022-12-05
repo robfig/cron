@@ -36,7 +36,23 @@ them in their own goroutines.
 	..
 	c.Stop()  // Stop the scheduler (does not stop any jobs already running).
 
-CRON Expression Format
+# Time mocking
+
+import "github.com/benbjohnson/clock"
+
+clk := clock.NewMock()
+
+c := cron.New(cron.WithClock(clk))
+
+	c.AddFunc("@every 1h", func() {
+		fmt.Println("Every hour")
+	})
+
+c.Start()
+
+clk.Add(1 * time.Hour)
+
+# CRON Expression Format
 
 A cron expression represents a set of times, using 5 space-separated fields.
 
