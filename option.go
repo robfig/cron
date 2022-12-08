@@ -43,3 +43,12 @@ func WithLogger(logger Logger) Option {
 		c.logger = logger
 	}
 }
+
+// SetJobRunLimit set max running job count. default 128
+func SetJobRunLimit(limit int) Option {
+	return func(c *Cron) {
+		if limit > 0 {
+			c.jobRunLimit = limit
+		}
+	}
+}

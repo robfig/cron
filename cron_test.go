@@ -700,3 +700,21 @@ func stop(cron *Cron) chan bool {
 func newWithSeconds() *Cron {
 	return New(WithParser(secondParser), WithChain())
 }
+
+func TestJobLimit(t *testing.T) {
+	cron := New(WithParser(secondParser), WithChain(), SetJobRunLimit(1))
+	go cron.Run()
+	time.Sleep(time.Second)
+	t.Logf("[%s]start", time.Now())
+	for i := range [3]struct{}{} {
+		cron.AddFunc("* * * * * *", func(i int) func() {
+			return func() {
+				time.Sleep(time.Second * 2)
+				t.Logf("[%s] %d done", time.Now(), i+1)
+			}
+		}(i))
+	}
+
+	time.Sleep(15 * time.Second)
+	cron.Stop()
+}

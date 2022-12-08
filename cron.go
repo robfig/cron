@@ -11,19 +11,21 @@ import (
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
-	entries   []*Entry
-	chain     Chain
-	stop      chan struct{}
-	add       chan *Entry
-	remove    chan EntryID
-	snapshot  chan chan []Entry
-	running   bool
-	logger    Logger
-	runningMu sync.Mutex
-	location  *time.Location
-	parser    ScheduleParser
-	nextID    EntryID
-	jobWaiter sync.WaitGroup
+	entries     []*Entry
+	chain       Chain
+	stop        chan struct{}
+	add         chan *Entry
+	remove      chan EntryID
+	snapshot    chan chan []Entry
+	running     bool
+	logger      Logger
+	runningMu   sync.Mutex
+	location    *time.Location
+	parser      ScheduleParser
+	nextID      EntryID
+	jobWaiter   sync.WaitGroup
+	jobRunLimit int
+	jobRun      chan struct{}
 }
 
 // ScheduleParser is an interface for schedule spec parsers that return a Schedule
@@ -97,35 +99,40 @@ func (s byTime) Less(i, j int) bool {
 //
 // Available Settings
 //
-//   Time Zone
-//     Description: The time zone in which schedules are interpreted
-//     Default:     time.Local
+//	Time Zone
+//	  Description: The time zone in which schedules are interpreted
+//	  Default:     time.Local
 //
-//   Parser
-//     Description: Parser converts cron spec strings into cron.Schedules.
-//     Default:     Accepts this spec: https://en.wikipedia.org/wiki/Cron
+//	Parser
+//	  Description: Parser converts cron spec strings into cron.Schedules.
+//	  Default:     Accepts this spec: https://en.wikipedia.org/wiki/Cron
 //
-//   Chain
-//     Description: Wrap submitted jobs to customize behavior.
-//     Default:     A chain that recovers panics and logs them to stderr.
+//	Chain
+//	  Description: Wrap submitted jobs to customize behavior.
+//	  Default:     A chain that recovers panics and logs them to stderr.
 //
 // See "cron.With*" to modify the default behavior.
 func New(opts ...Option) *Cron {
 	c := &Cron{
-		entries:   nil,
-		chain:     NewChain(),
-		add:       make(chan *Entry),
-		stop:      make(chan struct{}),
-		snapshot:  make(chan chan []Entry),
-		remove:    make(chan EntryID),
-		running:   false,
-		runningMu: sync.Mutex{},
-		logger:    DefaultLogger,
-		location:  time.Local,
-		parser:    standardParser,
+		entries:     nil,
+		chain:       NewChain(),
+		add:         make(chan *Entry),
+		stop:        make(chan struct{}),
+		snapshot:    make(chan chan []Entry),
+		remove:      make(chan EntryID),
+		running:     false,
+		runningMu:   sync.Mutex{},
+		logger:      DefaultLogger,
+		location:    time.Local,
+		parser:      standardParser,
+		jobRunLimit: 128,
 	}
 	for _, opt := range opts {
 		opt(c)
+	}
+	c.jobRun = make(chan struct{}, c.jobRunLimit)
+	for i := 0; i < c.jobRunLimit; i++ {
+		c.jobRun <- struct{}{}
 	}
 	return c
 }
@@ -308,7 +315,11 @@ func (c *Cron) run() {
 func (c *Cron) startJob(j Job) {
 	c.jobWaiter.Add(1)
 	go func() {
-		defer c.jobWaiter.Done()
+		t := <-c.jobRun
+		defer func() {
+			c.jobRun <- t
+			c.jobWaiter.Done()
+		}()
 		j.Run()
 	}()
 }
