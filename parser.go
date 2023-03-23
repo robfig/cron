@@ -56,18 +56,17 @@ type Parser struct {
 //
 // Examples
 //
-//  // Standard parser without descriptors
-//  specParser := NewParser(Minute | Hour | Dom | Month | Dow)
-//  sched, err := specParser.Parse("0 0 15 */3 *")
+//	// Standard parser without descriptors
+//	specParser := NewParser(Minute | Hour | Dom | Month | Dow)
+//	sched, err := specParser.Parse("0 0 15 */3 *")
 //
-//  // Same as above, just excludes time fields
-//  specParser := NewParser(Dom | Month | Dow)
-//  sched, err := specParser.Parse("15 */3 *")
+//	// Same as above, just excludes time fields
+//	specParser := NewParser(Dom | Month | Dow)
+//	sched, err := specParser.Parse("15 */3 *")
 //
-//  // Same as above, just makes Dow optional
-//  specParser := NewParser(Dom | Month | DowOptional)
-//  sched, err := specParser.Parse("15 */3")
-//
+//	// Same as above, just makes Dow optional
+//	specParser := NewParser(Dom | Month | DowOptional)
+//	sched, err := specParser.Parse("15 */3")
 func NewParser(options ParseOption) Parser {
 	optionals := 0
 	if options&DowOptional > 0 {
@@ -95,6 +94,11 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 	if strings.HasPrefix(spec, "TZ=") || strings.HasPrefix(spec, "CRON_TZ=") {
 		var err error
 		i := strings.Index(spec, " ")
+		if i < 0 {
+			// means that there is no " " in the spec
+			return nil, fmt.Errorf("invalid spec string")
+		}
+
 		eq := strings.Index(spec, "=")
 		if loc, err = time.LoadLocation(spec[eq+1 : i]); err != nil {
 			return nil, fmt.Errorf("provided bad location %s: %v", spec[eq+1:i], err)
@@ -247,7 +251,9 @@ func getField(field string, r bounds) (uint64, error) {
 }
 
 // getRange returns the bits indicated by the given expression:
-//   number | number "-" number [ "/" number ]
+//
+//	number | number "-" number [ "/" number ]
+//
 // or error parsing range.
 func getRange(expr string, r bounds) (uint64, error) {
 	var (
