@@ -43,3 +43,11 @@ func WithLogger(logger Logger) Option {
 		c.logger = logger
 	}
 }
+
+// WithTimerFunc specifies a Timer creator. If not specified, NewStandardTimer will be used by default. Refer to the Timer documentation for details.
+// This option generally used for testing
+func WithTimerFunc(timer func(time.Duration) Timer) Option {
+	return func(c *Cron) {
+		c.timerFn = timer
+	}
+}
