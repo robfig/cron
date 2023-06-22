@@ -687,6 +687,25 @@ func wait(wg *sync.WaitGroup) chan bool {
 	return ch
 }
 
+func TestIsRunning(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	cron := New()
+	cron.AddFunc("* * * * * ?", func() { wg.Done() })
+
+	cron.Start()
+	time.Sleep(OneSecond)
+	if !cron.IsRunning() {
+		t.Error("cron is reporting as not running when it should be running")
+	}
+
+	cron.Stop()
+	time.Sleep(OneSecond)
+	if cron.IsRunning() {
+		t.Error("cron is reporting as running when it should be not running")
+	}
+}
+
 func stop(cron *Cron) chan bool {
 	ch := make(chan bool)
 	go func() {

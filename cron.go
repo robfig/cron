@@ -353,3 +353,8 @@ func (c *Cron) removeEntry(id EntryID) {
 	}
 	c.entries = entries
 }
+
+// IsRunning returns the status of the cron scheduler
+func (c *Cron) IsRunning() bool {
+	return c.running
+}
