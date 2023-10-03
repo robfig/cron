@@ -11,20 +11,20 @@ import (
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
-	entries      []*Entry
-	chain        Chain
-	stop         chan struct{}
-	add          chan *Entry
-	remove       chan EntryID
-	snapshot     chan chan []Entry
-	running      bool
-	logger       Logger
-	runningMu    sync.Mutex
-	location     *time.Location
-	scheduleFrom time.Time
-	parser       ScheduleParser
-	nextID       EntryID
-	jobWaiter    sync.WaitGroup
+	entries       []*Entry
+	chain         Chain
+	stop          chan struct{}
+	add           chan *Entry
+	remove        chan EntryID
+	snapshot      chan chan []Entry
+	running       bool
+	logger        Logger
+	runningMu     sync.Mutex
+	location      *time.Location
+	epochProvider func() time.Time
+	parser        ScheduleParser
+	nextID        EntryID
+	jobWaiter     sync.WaitGroup
 }
 
 // ScheduleParser is an interface for schedule spec parsers that return a Schedule
@@ -235,8 +235,10 @@ func (c *Cron) Run() {
 	c.run()
 }
 
-func (c *Cron) ResetScheduleFrom(t time.Time) {
-	c.scheduleFrom = t
+// SetEpochProvider sets a function that will be used to
+// Note: only used when starting the scheduler, not while in flight.
+func (c *Cron) SetEpochProvider(ep func() time.Time) {
+	c.epochProvider = ep
 }
 
 // run the scheduler.. this is private just due to the need to synchronize
@@ -246,8 +248,8 @@ func (c *Cron) run() {
 
 	// Figure out the next activation times for each entry.
 	now := c.now()
-	if !c.scheduleFrom.IsZero() {
-		now = c.scheduleFrom
+	if c.epochProvider != nil {
+		now = c.epochProvider()
 	}
 	for _, entry := range c.entries {
 		entry.Next = entry.Schedule.Next(now)
