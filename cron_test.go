@@ -355,6 +355,32 @@ func TestNonLocalTimezone(t *testing.T) {
 	}
 }
 
+// Test that we can set the start time and schedules are called correctly
+func TestStartTime(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	now := time.Now()
+	spec := fmt.Sprintf("%d * * * * ?", now.Add(OneSecond*-1).Second())
+	fmt.Println(spec)
+
+	cron := New(
+		WithInitialTime(now.Add(OneSecond*-2)),
+		WithParser(secondParser),
+	)
+	_, err := cron.AddFunc(spec, func() { wg.Done() })
+	if err != nil {
+		t.Fatalf("error scheduling: %s", err)
+	}
+	cron.Start()
+	defer cron.Stop()
+
+	select {
+	case <-time.After(OneSecond * 2):
+		t.Error("expected job to run")
+	case <-wait(wg):
+	}
+}
+
 // Test that calling stop before start silently returns without
 // blocking the stop channel.
 func TestStopWithoutStart(t *testing.T) {
