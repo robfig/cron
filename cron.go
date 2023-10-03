@@ -235,12 +235,6 @@ func (c *Cron) Run() {
 	c.run()
 }
 
-// SetEpochProvider sets a function that will be used to
-// Note: only used when starting the scheduler, not while in flight.
-func (c *Cron) SetEpochProvider(ep func() time.Time) {
-	c.epochProvider = ep
-}
-
 // run the scheduler.. this is private just due to the need to synchronize
 // access to the 'running' state variable.
 func (c *Cron) run() {

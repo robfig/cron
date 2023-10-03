@@ -44,9 +44,9 @@ func WithLogger(logger Logger) Option {
 	}
 }
 
-// WithInitialTime sets the Time to begin scheduling from.
-func WithInitialTime(t time.Time) Option {
+// WithEpochProvider sets a provider to get the epoch time
+func WithEpochProvider(ep func() time.Time) Option {
 	return func(c *Cron) {
-		c.scheduleFrom = t
+		c.epochProvider = ep
 	}
 }
