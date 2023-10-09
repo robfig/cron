@@ -125,6 +125,8 @@ func TestParseScheduleErrors(t *testing.T) {
 		{"@unrecognized", "unrecognized descriptor"},
 		{"* * * *", "expected 5 to 6 fields"},
 		{"", "empty spec string"},
+		{"TZ=*\000~\000\000\000]0NU_UhB", "the time zone was specified incorrectly"},
+		{"TZ=", "the time zone was specified incorrectly"},
 	}
 	for _, c := range tests {
 		actual, err := secondParser.Parse(c.expr)
