@@ -247,6 +247,15 @@ func (c *Cron) run() {
 	}
 
 	for {
+		// Check whether the system time is adjusted to the past
+		for _, entry := range c.entries {
+			if now.Before(entry.Prev) {
+				entry.Next = entry.Schedule.Next(now)
+				entry.Prev = time.Unix(0, 0)
+				c.logger.Info("reschedule", "now", now, "entry", entry.ID, "next", entry.Next)
+			}
+		}
+
 		// Determine the next entry to run.
 		sort.Sort(byTime(c.entries))
 
