@@ -1,6 +1,7 @@
 package cron
 
 import (
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -52,6 +53,33 @@ func (pl printfLogger) Info(msg string, keysAndValues ...interface{}) {
 func (pl printfLogger) Error(err error, msg string, keysAndValues ...interface{}) {
 	keysAndValues = formatTimes(keysAndValues)
 	pl.logger.Printf(
+		formatString(len(keysAndValues)+2),
+		append([]interface{}{msg, "error", err}, keysAndValues...)...)
+}
+
+type externalLogger struct {
+	logger *log.Logger
+}
+
+// NewExternalLogger allows for providing an external logging interface through an io.Writer
+func NewExternalLogger(w io.Writer) *externalLogger {
+	l := log.New(w, "cron: ", log.Llongfile)
+
+	el := externalLogger{
+		logger: l,
+	}
+
+	return &el
+}
+
+func (el *externalLogger) Info(msg string, keysAndValues ...interface{}) {
+	el.logger.Printf(
+		formatString(len(keysAndValues)),
+		append([]interface{}{msg}, keysAndValues...)...)
+}
+
+func (el *externalLogger) Error(err error, msg string, keysAndValues ...interface{}) {
+	el.logger.Printf(
 		formatString(len(keysAndValues)+2),
 		append([]interface{}{msg, "error", err}, keysAndValues...)...)
 }
