@@ -1,6 +1,7 @@
 package cron
 
 import (
+	"context"
 	"log"
 	"strings"
 	"testing"
@@ -30,8 +31,8 @@ func TestWithVerboseLogger(t *testing.T) {
 		t.Error("expected provided logger")
 	}
 
-	c.AddFunc("@every 1s", func() {})
-	c.Start()
+	c.AddFunc("@every 1s", func(context.Context) {})
+	c.Start(context.Background())
 	time.Sleep(OneSecond)
 	c.Stop()
 	out := buf.String()

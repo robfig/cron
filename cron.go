@@ -33,7 +33,7 @@ type ScheduleParser interface {
 
 // Job is an interface for submitted cron jobs.
 type Job interface {
-	Run()
+	Run(context.Context)
 }
 
 // Schedule describes a job's duty cycle.
@@ -97,17 +97,17 @@ func (s byTime) Less(i, j int) bool {
 //
 // Available Settings
 //
-//   Time Zone
-//     Description: The time zone in which schedules are interpreted
-//     Default:     time.Local
+//	Time Zone
+//	  Description: The time zone in which schedules are interpreted
+//	  Default:     time.Local
 //
-//   Parser
-//     Description: Parser converts cron spec strings into cron.Schedules.
-//     Default:     Accepts this spec: https://en.wikipedia.org/wiki/Cron
+//	Parser
+//	  Description: Parser converts cron spec strings into cron.Schedules.
+//	  Default:     Accepts this spec: https://en.wikipedia.org/wiki/Cron
 //
-//   Chain
-//     Description: Wrap submitted jobs to customize behavior.
-//     Default:     A chain that recovers panics and logs them to stderr.
+//	Chain
+//	  Description: Wrap submitted jobs to customize behavior.
+//	  Default:     A chain that recovers panics and logs them to stderr.
 //
 // See "cron.With*" to modify the default behavior.
 func New(opts ...Option) *Cron {
@@ -131,14 +131,14 @@ func New(opts ...Option) *Cron {
 }
 
 // FuncJob is a wrapper that turns a func() into a cron.Job
-type FuncJob func()
+type FuncJob func(ctx context.Context)
 
-func (f FuncJob) Run() { f() }
+func (f FuncJob) Run(ctx context.Context) { f(ctx) }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
 // The spec is parsed using the time zone of this Cron instance as the default.
 // An opaque ID is returned that can be used to later remove it.
-func (c *Cron) AddFunc(spec string, cmd func()) (EntryID, error) {
+func (c *Cron) AddFunc(spec string, cmd func(context.Context)) (EntryID, error) {
 	return c.AddJob(spec, FuncJob(cmd))
 }
 
@@ -212,18 +212,18 @@ func (c *Cron) Remove(id EntryID) {
 }
 
 // Start the cron scheduler in its own goroutine, or no-op if already started.
-func (c *Cron) Start() {
+func (c *Cron) Start(ctx context.Context) {
 	c.runningMu.Lock()
 	defer c.runningMu.Unlock()
 	if c.running {
 		return
 	}
 	c.running = true
-	go c.run()
+	go c.run(ctx)
 }
 
 // Run the cron scheduler, or no-op if already running.
-func (c *Cron) Run() {
+func (c *Cron) Run(ctx context.Context) {
 	c.runningMu.Lock()
 	if c.running {
 		c.runningMu.Unlock()
@@ -231,12 +231,12 @@ func (c *Cron) Run() {
 	}
 	c.running = true
 	c.runningMu.Unlock()
-	c.run()
+	c.run(ctx)
 }
 
 // run the scheduler.. this is private just due to the need to synchronize
 // access to the 'running' state variable.
-func (c *Cron) run() {
+func (c *Cron) run(ctx context.Context) {
 	c.logger.Info("start")
 
 	// Figure out the next activation times for each entry.
@@ -270,7 +270,7 @@ func (c *Cron) run() {
 					if e.Next.After(now) || e.Next.IsZero() {
 						break
 					}
-					c.startJob(e.WrappedJob)
+					c.startJob(ctx, e.WrappedJob)
 					e.Prev = e.Next
 					e.Next = e.Schedule.Next(now)
 					c.logger.Info("run", "now", now, "entry", e.ID, "next", e.Next)
@@ -292,6 +292,11 @@ func (c *Cron) run() {
 				c.logger.Info("stop")
 				return
 
+			case <-ctx.Done():
+				timer.Stop()
+				c.logger.Info("context canceled")
+				return
+
 			case id := <-c.remove:
 				timer.Stop()
 				now = c.now()
@@ -305,11 +310,11 @@ func (c *Cron) run() {
 }
 
 // startJob runs the given job in a new goroutine.
-func (c *Cron) startJob(j Job) {
+func (c *Cron) startJob(ctx context.Context, j Job) {
 	c.jobWaiter.Add(1)
 	go func() {
 		defer c.jobWaiter.Done()
-		j.Run()
+		j.Run(ctx)
 	}()
 }
 
