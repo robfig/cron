@@ -149,6 +149,9 @@ func TestParseSchedule(t *testing.T) {
 		{secondParser, "CRON_TZ=UTC  0 5 * * * *", every5min(time.UTC)},
 		{standardParser, "CRON_TZ=UTC  5 * * * *", every5min(time.UTC)},
 		{secondParser, "CRON_TZ=Asia/Tokyo 0 5 * * * *", every5min(tokyo)},
+		{standardParser, "CRON_TZ=Asia/Tokyo 0 0 * * 0", everySunday(tokyo)},
+		{standardParser, "CRON_TZ=Asia/Tokyo 0 0 * * 7", everySunday(tokyo)},
+		{standardParser, "CRON_TZ=Asia/Tokyo 0 0 * * Sun", everySunday(tokyo)},
 		{secondParser, "@every 5m", ConstantDelaySchedule{5 * time.Minute}},
 		{secondParser, "@midnight", midnight(time.Local)},
 		{secondParser, "TZ=UTC  @midnight", midnight(time.UTC)},
@@ -368,6 +371,10 @@ func every5min5s(loc *time.Location) *SpecSchedule {
 
 func midnight(loc *time.Location) *SpecSchedule {
 	return &SpecSchedule{1, 1, 1, all(dom), all(months), all(dow), loc}
+}
+
+func everySunday(loc *time.Location) *SpecSchedule {
+	return &SpecSchedule{1, 1, 1, all(dom), all(months), 1 << uint(time.Sunday), loc}
 }
 
 func annual(loc *time.Location) *SpecSchedule {
