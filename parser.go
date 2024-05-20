@@ -135,10 +135,17 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		hour       = field(fields[2], hours)
 		dayofmonth = field(fields[3], dom)
 		month      = field(fields[4], months)
-		dayofweek  = field(fields[5], dow)
+		dayofweek  = field(fields[5], extendedDOW)
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	if 1<<7&dayofweek > 0 {
+		// For compatibility with https://linux.die.net/man/5/crontab
+		// we consider 1 in the 7th bit as Sunday and move it to the first bit
+		dayofweek |= 1
+		dayofweek ^= 1 << 7
 	}
 
 	return &SpecSchedule{

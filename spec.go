@@ -46,6 +46,9 @@ var (
 		"fri": 5,
 		"sat": 6,
 	}}
+
+	// extendedDOW is only needed to parse "7" as Sunday
+	extendedDOW = bounds{dow.min, 7, dow.names}
 )
 
 const (
