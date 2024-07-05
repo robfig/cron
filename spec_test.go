@@ -54,6 +54,7 @@ func TestActivation(t *testing.T) {
 		{"Mon Jul 9 00:00 2012", "* * 1,15 * *", false},
 		{"Sun Jul 15 00:00 2012", "* * 1,15 * *", true},
 		{"Sun Jul 15 00:00 2012", "* * */2 * Sun", true},
+		{"Wed Jul 31 00:00 2024", "* * L * *", true},
 	}
 
 	for _, test := range tests {

@@ -1,6 +1,8 @@
 package cron
 
-import "time"
+import (
+	"time"
+)
 
 // SpecSchedule specifies a duty cycle (to the second granularity), based on a
 // traditional crontab specification. It is computed initially and stored as bit sets.
@@ -22,7 +24,7 @@ var (
 	seconds = bounds{0, 59, nil}
 	minutes = bounds{0, 59, nil}
 	hours   = bounds{0, 23, nil}
-	dom     = bounds{1, 31, nil}
+	dom     = bounds{1, 32, map[string]uint{"l":32}}
 	months  = bounds{1, 12, map[string]uint{
 		"jan": 1,
 		"feb": 2,
@@ -174,14 +176,32 @@ WRAP:
 	return t.In(origLocation)
 }
 
+func lastDayOfMonth(year int, month time.Month) time.Time {
+    // get first day of next month
+    nextMonth := time.Date(year, month+1, 1, 0, 0, 0, 0, time.UTC)
+    lastDay := nextMonth.AddDate(0, 0, -1)
+    return lastDay
+}
+
+
 // dayMatches returns true if the schedule's day-of-week and day-of-month
 // restrictions are satisfied by the given time.
+// if they set 32 in day of month it's mean they set last day of month ,so I figure out last day of month dynamically
+// use temporary value to compare
 func dayMatches(s *SpecSchedule, t time.Time) bool {
-	var (
-		domMatch bool = 1<<uint(t.Day())&s.Dom > 0
-		dowMatch bool = 1<<uint(t.Weekday())&s.Dow > 0
-	)
-	if s.Dom&starBit > 0 || s.Dow&starBit > 0 {
+	var domLastDayMatch bool = 1<<uint(32) &s.Dom >0
+	var domMatch bool
+	var dowMatch bool = 1<<uint(t.Weekday())&s.Dow > 0
+	var tempDom uint64
+	if domLastDayMatch{
+		lastDay := lastDayOfMonth(t.Year(),t.Month())
+		tempDom = s.Dom | (1<< uint(lastDay.Day()))
+		domMatch = 1<<uint(t.Day())&tempDom > 0 
+	}else{
+		tempDom = s.Dom
+		domMatch = 1<<uint(t.Day())&tempDom > 0 
+	}
+	if tempDom&starBit > 0 || s.Dow&starBit > 0 {
 		return domMatch && dowMatch
 	}
 	return domMatch || dowMatch
