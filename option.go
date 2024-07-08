@@ -43,3 +43,10 @@ func WithLogger(logger Logger) Option {
 		c.logger = logger
 	}
 }
+
+// WithTimeCallback uses the provided time function callback for getting the current time.
+func WithTimeCallback(timeCallback func() time.Time) Option {
+	return func(c *Cron) {
+		c.timeCallback = timeCallback
+	}
+}

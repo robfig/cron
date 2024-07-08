@@ -26,7 +26,7 @@ func TestConstantDelayNext(t *testing.T) {
 		{"Mon Jul 9 23:35:51 2012", 25*time.Hour + 44*time.Minute + 24*time.Second, "Thu Jul 11 01:20:15 2012"},
 
 		// Wrap around months
-		{"Mon Jul 9 23:35 2012", 91*24*time.Hour + 25*time.Minute, "Thu Oct 9 00:00 2012"},
+		{"Mon Jun 9 23:35 2012", 91*24*time.Hour + 25*time.Minute, "Thu Sep 9 00:00 2012"}, // Don't do JUL->OCT otherwise daylight savings breaks the test in some time zones...
 
 		// Wrap around minute, hour, day, month, and year
 		{"Mon Dec 31 23:59:45 2012", 15 * time.Second, "Tue Jan 1 00:00:00 2013"},
