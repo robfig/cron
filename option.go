@@ -43,3 +43,10 @@ func WithLogger(logger Logger) Option {
 		c.logger = logger
 	}
 }
+
+// WithEntries uses the provided entries.
+func WithEntries(entries []*Entry) Option {
+	return func(c *Cron) {
+		c.entries = entries
+	}
+}
