@@ -2,6 +2,7 @@ package cron
 
 import (
 	"fmt"
+	"hash/fnv"
 	"math"
 	"strconv"
 	"strings"
@@ -49,6 +50,10 @@ type Parser struct {
 	options ParseOption
 }
 
+type hashSpec struct {
+	min, max, step uint
+}
+
 // NewParser creates a Parser with custom options.
 //
 // It panics if more than one Optional is given, since it would be impossible to
@@ -56,18 +61,17 @@ type Parser struct {
 //
 // Examples
 //
-//  // Standard parser without descriptors
-//  specParser := NewParser(Minute | Hour | Dom | Month | Dow)
-//  sched, err := specParser.Parse("0 0 15 */3 *")
+//	// Standard parser without descriptors
+//	specParser := NewParser(Minute | Hour | Dom | Month | Dow)
+//	sched, err := specParser.Parse("0 0 15 */3 *")
 //
-//  // Same as above, just excludes time fields
-//  specParser := NewParser(Dom | Month | Dow)
-//  sched, err := specParser.Parse("15 */3 *")
+//	// Same as above, just excludes time fields
+//	specParser := NewParser(Dom | Month | Dow)
+//	sched, err := specParser.Parse("15 */3 *")
 //
-//  // Same as above, just makes Dow optional
-//  specParser := NewParser(Dom | Month | DowOptional)
-//  sched, err := specParser.Parse("15 */3")
-//
+//	// Same as above, just makes Dow optional
+//	specParser := NewParser(Dom | Month | DowOptional)
+//	sched, err := specParser.Parse("15 */3")
 func NewParser(options ParseOption) Parser {
 	optionals := 0
 	if options&DowOptional > 0 {
@@ -86,6 +90,10 @@ func NewParser(options ParseOption) Parser {
 // It returns a descriptive error if the spec is not valid.
 // It accepts crontab specs and features configured by NewParser.
 func (p Parser) Parse(spec string) (Schedule, error) {
+	return p.ParseWithJobName(spec, "")
+}
+
+func (p Parser) ParseWithJobName(spec string, jobName string) (Schedule, error) {
 	if len(spec) == 0 {
 		return nil, fmt.Errorf("empty spec string")
 	}
@@ -125,7 +133,7 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 			return 0
 		}
 		var bits uint64
-		bits, err = getField(field, r)
+		bits, err = getField(field, r, jobName)
 		return bits
 	}
 
@@ -233,11 +241,11 @@ func ParseStandard(standardSpec string) (Schedule, error) {
 // getField returns an Int with the bits set representing all of the times that
 // the field represents or error parsing field value.  A "field" is a comma-separated
 // list of "ranges".
-func getField(field string, r bounds) (uint64, error) {
+func getField(field string, r bounds, jobName string) (uint64, error) {
 	var bits uint64
 	ranges := strings.FieldsFunc(field, func(r rune) bool { return r == ',' })
 	for _, expr := range ranges {
-		bit, err := getRange(expr, r)
+		bit, err := getRange(expr, r, jobName)
 		if err != nil {
 			return bits, err
 		}
@@ -247,9 +255,11 @@ func getField(field string, r bounds) (uint64, error) {
 }
 
 // getRange returns the bits indicated by the given expression:
-//   number | number "-" number [ "/" number ]
+//
+//	number | number "-" number [ "/" number ]
+//
 // or error parsing range.
-func getRange(expr string, r bounds) (uint64, error) {
+func getRange(expr string, r bounds, jobName string) (uint64, error) {
 	var (
 		start, end, step uint
 		rangeAndStep     = strings.Split(expr, "/")
@@ -259,6 +269,10 @@ func getRange(expr string, r bounds) (uint64, error) {
 	)
 
 	var extra uint64
+	if lowAndHigh[0] == "H" {
+		return getHashedValue(expr, r, jobName)
+	}
+
 	if lowAndHigh[0] == "*" || lowAndHigh[0] == "?" {
 		start = r.min
 		end = r.max
@@ -315,6 +329,101 @@ func getRange(expr string, r bounds) (uint64, error) {
 	}
 
 	return getBits(start, end, step) | extra, nil
+}
+
+// parseHashExpression parses a hashed cron expression and returns a hashSpec containing
+// the parsed values. The expression can be in the following forms:
+//   - "H": Uses the provided bounds as min/max with step of 1
+//   - "H/n": Uses the provided bounds as min/max with step of n
+//   - "H(min-max)": Uses the specified range with step of 1
+//   - "H(min-max)/n": Uses the specified range with step of n
+//
+// Parameters:
+//   - expr: The hash expression to parse (e.g., "H", "H/2", "H(1-10)", "H(1-10)/2")
+//   - r: The bounds object containing the minimum and maximum allowed values
+//
+// Returns:
+//   - hashSpec: Contains the parsed min, max, and step values
+//   - error: If the expression is invalid or values are out of bounds
+func parseHashExpression(expr string, r bounds) (hashSpec, error) {
+	// set default
+	spec := hashSpec{min: r.min, max: r.max, step: 1}
+
+	// Parse range if present
+	if rangeStart := strings.Index(expr, "("); rangeStart != -1 {
+		rangeEnd := strings.Index(expr, ")")
+		if rangeEnd == -1 {
+			return spec, fmt.Errorf("missing closing parenthesis")
+		}
+
+		rangeParts := strings.Split(expr[rangeStart+1:rangeEnd], "-")
+		if len(rangeParts) != 2 {
+			return spec, fmt.Errorf("invalid range format")
+		}
+
+		var err error
+		if spec.min, err = mustParseInt(rangeParts[0]); err != nil {
+			return spec, err
+		}
+		if spec.max, err = mustParseInt(rangeParts[1]); err != nil {
+			return spec, err
+		}
+
+		if spec.min > spec.max || spec.min < r.min || spec.max > r.max {
+			return spec, fmt.Errorf("invalid range")
+		}
+
+		expr = expr[:rangeStart] + expr[rangeEnd+1:]
+	}
+
+	// Parse step if present
+	if strings.Contains(expr, "/") {
+		parts := strings.Split(expr, "/")
+		if len(parts) != 2 {
+			return spec, fmt.Errorf("invalid step format")
+		}
+
+		var err error
+		if spec.step, err = mustParseInt(parts[1]); err != nil {
+			return spec, err
+		}
+	}
+
+	return spec, nil
+}
+
+// getHashedValue generates a bit pattern based on a hashed cron expression.
+// It supports various formats of hashed expressions and generates consistent
+// but pseudo-random values based on the provided job name.
+//
+// Parameters:
+//   - expr: The hash expression to evaluate (e.g., "H", "H/2", "H(1-10)", "H(1-10)/2")
+//   - r: The bounds object containing the minimum and maximum allowed values
+//   - jobName: A string identifier used to generate consistent hash values
+func getHashedValue(expr string, r bounds, jobName string) (uint64, error) {
+	spec, err := parseHashExpression(expr, r)
+	if err != nil {
+		return 0, err
+	}
+
+	h := fnv.New64a()
+	if jobName != "" {
+		h.Write([]byte(jobName))
+	}
+	h.Write([]byte(fmt.Sprintf("%d%d", r.min, r.max)))
+	hash := h.Sum64()
+
+	if spec.step == 1 {
+		value := spec.min + (uint(hash) % (spec.max - spec.min + 1))
+		return 1 << value, nil
+	}
+
+	offset := uint(hash % uint64(spec.step))
+	var result uint64
+	for i := spec.min + offset; i <= spec.max; i += spec.step {
+		result |= 1 << i
+	}
+	return result, nil
 }
 
 // parseIntOrName returns the (possibly-named) integer contained in expr.
