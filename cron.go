@@ -24,11 +24,13 @@ type Cron struct {
 	parser    Parser
 	nextID    EntryID
 	jobWaiter sync.WaitGroup
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 // Job is an interface for submitted cron jobs.
 type Job interface {
-	Run()
+	Run(ctx context.Context)
 }
 
 // Schedule describes a job's duty cycle.
@@ -92,20 +94,21 @@ func (s byTime) Less(i, j int) bool {
 //
 // Available Settings
 //
-//   Time Zone
-//     Description: The time zone in which schedules are interpreted
-//     Default:     time.Local
+//	Time Zone
+//	  Description: The time zone in which schedules are interpreted
+//	  Default:     time.Local
 //
-//   Parser
-//     Description: Parser converts cron spec strings into cron.Schedules.
-//     Default:     Accepts this spec: https://en.wikipedia.org/wiki/Cron
+//	Parser
+//	  Description: Parser converts cron spec strings into cron.Schedules.
+//	  Default:     Accepts this spec: https://en.wikipedia.org/wiki/Cron
 //
-//   Chain
-//     Description: Wrap submitted jobs to customize behavior.
-//     Default:     A chain that recovers panics and logs them to stderr.
+//	Chain
+//	  Description: Wrap submitted jobs to customize behavior.
+//	  Default:     A chain that recovers panics and logs them to stderr.
 //
 // See "cron.With*" to modify the default behavior.
 func New(opts ...Option) *Cron {
+	ctx, cancel := context.WithCancel(context.Background())
 	c := &Cron{
 		entries:   nil,
 		chain:     NewChain(),
@@ -118,6 +121,8 @@ func New(opts ...Option) *Cron {
 		logger:    DefaultLogger,
 		location:  time.Local,
 		parser:    standardParser,
+		ctx:       ctx,
+		cancel:    cancel,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -126,14 +131,14 @@ func New(opts ...Option) *Cron {
 }
 
 // FuncJob is a wrapper that turns a func() into a cron.Job
-type FuncJob func()
+type FuncJob func(ctx context.Context)
 
-func (f FuncJob) Run() { f() }
+func (f FuncJob) Run(ctx context.Context) { f(ctx) }
 
 // AddFunc adds a func to the Cron to be run on the given schedule.
 // The spec is parsed using the time zone of this Cron instance as the default.
 // An opaque ID is returned that can be used to later remove it.
-func (c *Cron) AddFunc(spec string, cmd func()) (EntryID, error) {
+func (c *Cron) AddFunc(spec string, cmd func(ctx context.Context)) (EntryID, error) {
 	return c.AddJob(spec, FuncJob(cmd))
 }
 
@@ -304,7 +309,7 @@ func (c *Cron) startJob(j Job) {
 	c.jobWaiter.Add(1)
 	go func() {
 		defer c.jobWaiter.Done()
-		j.Run()
+		j.Run(c.ctx)
 	}()
 }
 
@@ -319,6 +324,7 @@ func (c *Cron) Stop() context.Context {
 	c.runningMu.Lock()
 	defer c.runningMu.Unlock()
 	if c.running {
+		c.cancel()
 		c.stop <- struct{}{}
 		c.running = false
 	}
