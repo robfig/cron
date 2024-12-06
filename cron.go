@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -97,17 +98,17 @@ func (s byTime) Less(i, j int) bool {
 //
 // Available Settings
 //
-//   Time Zone
-//     Description: The time zone in which schedules are interpreted
-//     Default:     time.Local
+//	Time Zone
+//	  Description: The time zone in which schedules are interpreted
+//	  Default:     time.Local
 //
-//   Parser
-//     Description: Parser converts cron spec strings into cron.Schedules.
-//     Default:     Accepts this spec: https://en.wikipedia.org/wiki/Cron
+//	Parser
+//	  Description: Parser converts cron spec strings into cron.Schedules.
+//	  Default:     Accepts this spec: https://en.wikipedia.org/wiki/Cron
 //
-//   Chain
-//     Description: Wrap submitted jobs to customize behavior.
-//     Default:     A chain that recovers panics and logs them to stderr.
+//	Chain
+//	  Description: Wrap submitted jobs to customize behavior.
+//	  Default:     A chain that recovers panics and logs them to stderr.
 //
 // See "cron.With*" to modify the default behavior.
 func New(opts ...Option) *Cron {
@@ -352,4 +353,44 @@ func (c *Cron) removeEntry(id EntryID) {
 		}
 	}
 	c.entries = entries
+}
+
+// AddJobWithID adds a Job to the Cron to be run on the given schedule with a predefined ID.
+func (c *Cron) AddJobWithID(id EntryID, spec string, cmd Job) error {
+	schedule, err := c.parser.Parse(spec)
+	if err != nil {
+		return err
+	}
+	return c.ScheduleWithID(id, schedule, cmd)
+}
+
+// ScheduleWithID adds a Job to the Cron with a predefined ID to be run on the given schedule.
+// The job is wrapped with the configured Chain.
+func (c *Cron) ScheduleWithID(id EntryID, schedule Schedule, cmd Job) error {
+	c.runningMu.Lock()
+	defer c.runningMu.Unlock()
+
+	// Check if an entry with the same ID already exists
+	for _, entry := range c.entries {
+		if entry.ID == id {
+			return fmt.Errorf("an entry with this ID already exists: %d", id)
+		}
+	}
+
+	entry := &Entry{
+		ID:         id, // Use the provided ID
+		Schedule:   schedule,
+		WrappedJob: c.chain.Then(cmd),
+		Job:        cmd,
+	}
+	if !c.running {
+		c.entries = append(c.entries, entry)
+	} else {
+		c.add <- entry
+	}
+	return nil
+}
+
+func (c *Cron) AddFuncWithID(id EntryID, spec string, cmd func()) error {
+	return c.AddJobWithID(id, spec, FuncJob(cmd))
 }
