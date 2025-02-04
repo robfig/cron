@@ -97,17 +97,17 @@ func (s byTime) Less(i, j int) bool {
 //
 // Available Settings
 //
-//   Time Zone
-//     Description: The time zone in which schedules are interpreted
-//     Default:     time.Local
+//	Time Zone
+//	  Description: The time zone in which schedules are interpreted
+//	  Default:     time.Local
 //
-//   Parser
-//     Description: Parser converts cron spec strings into cron.Schedules.
-//     Default:     Accepts this spec: https://en.wikipedia.org/wiki/Cron
+//	Parser
+//	  Description: Parser converts cron spec strings into cron.Schedules.
+//	  Default:     Accepts this spec: https://en.wikipedia.org/wiki/Cron
 //
-//   Chain
-//     Description: Wrap submitted jobs to customize behavior.
-//     Default:     A chain that recovers panics and logs them to stderr.
+//	Chain
+//	  Description: Wrap submitted jobs to customize behavior.
+//	  Default:     A chain that recovers panics and logs them to stderr.
 //
 // See "cron.With*" to modify the default behavior.
 func New(opts ...Option) *Cron {
@@ -124,6 +124,13 @@ func New(opts ...Option) *Cron {
 		location:  time.Local,
 		parser:    standardParser,
 	}
+
+	// if no options provided a default recoverer with DefaultLogger are provided
+	if len(opts) == 0 {
+		WithChain(Recover(DefaultLogger))(c)
+		return c
+	}
+
 	for _, opt := range opts {
 		opt(c)
 	}
