@@ -355,7 +355,7 @@ func (c *Cron) entrySnapshot() []Entry {
 }
 
 func (c *Cron) removeEntry(id EntryID) {
-	var entries []*Entry
+	var entries []*Entry = make([]*Entry, len(c.entries)-1)
 	for _, e := range c.entries {
 		if e.ID != id {
 			entries = append(entries, e)
