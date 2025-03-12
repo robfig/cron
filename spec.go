@@ -140,8 +140,16 @@ WRAP:
 			added = true
 			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, loc)
 		}
+		prev := t
 		t = t.Add(1 * time.Hour)
-
+		// ISC cron behavior: If time was adjusted one hour forward, those jobs
+		// that would have run in the interval that has been skipped will be run
+		// immediately.
+		if t.Hour()-prev.Hour() == 2 {
+			if 1<<uint(t.Hour()-1)&s.Hour > 0 {
+				break
+			}
+		}
 		if t.Hour() == 0 {
 			goto WRAP
 		}

@@ -111,7 +111,7 @@ func TestNext(t *testing.T) {
 		{"Mon Jul 9 23:35 2012", "0 0 0 29 Feb ?", "Mon Feb 29 00:00 2016"},
 
 		// Daylight savings time 2am EST (-5) -> 3am EDT (-4)
-		{"2012-03-11T00:00:00-0500", "TZ=America/New_York 0 30 2 11 Mar ?", "2013-03-11T02:30:00-0400"},
+		{"2012-03-11T00:00:00-0500", "TZ=America/New_York 0 30 2 11 Mar ?", "2012-03-11T03:30:00-0400"},
 
 		// hourly job
 		{"2012-03-11T00:00:00-0500", "TZ=America/New_York 0 0 * * * ?", "2012-03-11T01:00:00-0500"},
@@ -129,8 +129,8 @@ func TestNext(t *testing.T) {
 		{"2012-03-11T00:00:00-0500", "TZ=America/New_York 0 0 1 * * ?", "2012-03-11T01:00:00-0500"},
 		{"2012-03-11T01:00:00-0500", "TZ=America/New_York 0 0 1 * * ?", "2012-03-12T01:00:00-0400"},
 
-		// 2am nightly job (skipped)
-		{"2012-03-11T00:00:00-0500", "TZ=America/New_York 0 0 2 * * ?", "2012-03-12T02:00:00-0400"},
+		// Daylight savings time 2am EST (-5) -> 3am EDT (-4)
+		{"2012-03-11T00:00:00-0500", "TZ=America/New_York 0 0 2 * * ?", "2012-03-11T03:00:00-0400"},
 
 		// Daylight savings time 2am EDT (-4) => 1am EST (-5)
 		{"2012-11-04T00:00:00-0400", "TZ=America/New_York 0 30 2 04 Nov ?", "2012-11-04T02:30:00-0500"},
