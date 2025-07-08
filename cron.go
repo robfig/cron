@@ -2,6 +2,7 @@ package cron
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -22,7 +23,7 @@ type Cron struct {
 	runningMu sync.Mutex
 	location  *time.Location
 	parser    ScheduleParser
-	nextID    EntryID
+	nextID    int
 	jobWaiter sync.WaitGroup
 }
 
@@ -44,7 +45,7 @@ type Schedule interface {
 }
 
 // EntryID identifies an entry within a Cron instance
-type EntryID int
+type EntryID any
 
 // Entry consists of a schedule and the func to execute on that schedule.
 type Entry struct {
@@ -72,7 +73,16 @@ type Entry struct {
 }
 
 // Valid returns true if this is not the zero entry.
-func (e Entry) Valid() bool { return e.ID != 0 }
+func (e Entry) Valid() bool {
+	switch id := e.ID.(type) {
+	case int:
+		return id != 0
+	case string:
+		return id != ""
+	default:
+		return false
+	}
+}
 
 // byTime is a wrapper for sorting the entry array by time
 // (with zero time at the end).
@@ -142,6 +152,24 @@ func (c *Cron) AddFunc(spec string, cmd func()) (EntryID, error) {
 	return c.AddJob(spec, FuncJob(cmd))
 }
 
+// AddFuncWithID AddFunc adds a func to the Cron to be run on the given schedule.
+// The spec is parsed using the time zone of this Cron instance as the default.
+// An opaque ID is returned that can be used to later remove it.
+func (c *Cron) AddFuncWithID(id any, spec string, cmd func()) (EntryID, error) {
+	return c.AddJobWithID(id, spec, FuncJob(cmd))
+}
+
+// AddJobWithID AddJob adds a Job to the Cron to be run on the given schedule.
+// The spec is parsed using the time zone of this Cron instance as the default.
+// An opaque ID is returned that can be used to later remove it.
+func (c *Cron) AddJobWithID(id any, spec string, cmd Job) (EntryID, error) {
+	schedule, err := c.parser.Parse(spec)
+	if err != nil {
+		return 0, err
+	}
+	return c.ScheduleWithID(id, schedule, cmd), nil
+}
+
 // AddJob adds a Job to the Cron to be run on the given schedule.
 // The spec is parsed using the time zone of this Cron instance as the default.
 // An opaque ID is returned that can be used to later remove it.
@@ -151,6 +179,32 @@ func (c *Cron) AddJob(spec string, cmd Job) (EntryID, error) {
 		return 0, err
 	}
 	return c.Schedule(schedule, cmd), nil
+}
+
+// ScheduleWithID Schedule adds a Job to the Cron to be run on the given schedule.
+// The job is wrapped with the configured Chain.
+func (c *Cron) ScheduleWithID(id any, schedule Schedule, cmd Job) EntryID {
+	c.runningMu.Lock()
+	defer c.runningMu.Unlock()
+
+	for _, entry := range c.entries {
+		if entry.ID == id {
+			return fmt.Errorf("an entry with this ID already exists: %d", id)
+		}
+	}
+
+	entry := &Entry{
+		ID:         id,
+		Schedule:   schedule,
+		WrappedJob: c.chain.Then(cmd),
+		Job:        cmd,
+	}
+	if !c.running {
+		c.entries = append(c.entries, entry)
+	} else {
+		c.add <- entry
+	}
+	return entry.ID
 }
 
 // Schedule adds a Job to the Cron to be run on the given schedule.
