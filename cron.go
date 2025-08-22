@@ -24,6 +24,7 @@ type Cron struct {
 	parser    ScheduleParser
 	nextID    EntryID
 	jobWaiter sync.WaitGroup
+	getTimeFn GetTimeFn
 }
 
 // ScheduleParser is an interface for schedule spec parsers that return a Schedule
@@ -93,21 +94,30 @@ func (s byTime) Less(i, j int) bool {
 	return s[i].Next.Before(s[j].Next)
 }
 
+// Get Time Fn, Provide for user to customize the get time function
+type GetTimeFn func() time.Time
+
+// GetTime returns the current time in the cron's location.
+// This can be overridden to mock time in tests.
+var DefaultGetTimeFn = func() time.Time {
+	return time.Now()
+}
+
 // New returns a new Cron job runner, modified by the given options.
 //
 // Available Settings
 //
-//   Time Zone
-//     Description: The time zone in which schedules are interpreted
-//     Default:     time.Local
+//	Time Zone
+//	  Description: The time zone in which schedules are interpreted
+//	  Default:     time.Local
 //
-//   Parser
-//     Description: Parser converts cron spec strings into cron.Schedules.
-//     Default:     Accepts this spec: https://en.wikipedia.org/wiki/Cron
+//	Parser
+//	  Description: Parser converts cron spec strings into cron.Schedules.
+//	  Default:     Accepts this spec: https://en.wikipedia.org/wiki/Cron
 //
-//   Chain
-//     Description: Wrap submitted jobs to customize behavior.
-//     Default:     A chain that recovers panics and logs them to stderr.
+//	Chain
+//	  Description: Wrap submitted jobs to customize behavior.
+//	  Default:     A chain that recovers panics and logs them to stderr.
 //
 // See "cron.With*" to modify the default behavior.
 func New(opts ...Option) *Cron {
@@ -123,6 +133,7 @@ func New(opts ...Option) *Cron {
 		logger:    DefaultLogger,
 		location:  time.Local,
 		parser:    standardParser,
+		getTimeFn: DefaultGetTimeFn,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -315,7 +326,7 @@ func (c *Cron) startJob(j Job) {
 
 // now returns current time in c location
 func (c *Cron) now() time.Time {
-	return time.Now().In(c.location)
+	return c.getTimeFn().In(c.location)
 }
 
 // Stop stops the cron scheduler if it is running; otherwise it does nothing.
