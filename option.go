@@ -43,3 +43,10 @@ func WithLogger(logger Logger) Option {
 		c.logger = logger
 	}
 }
+
+// WithGetTimeFn overrides the get time function used for interpreting job schedules.
+func WithGetTimeFn(fn GetTimeFn) Option {
+	return func(c *Cron) {
+		c.getTimeFn = fn
+	}
+}
