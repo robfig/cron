@@ -358,6 +358,28 @@ func TestNoDescriptorParser(t *testing.T) {
 	}
 }
 
+func TestMissingOptionalFieldsAndDescriptorAfterTimezone(t *testing.T) {
+	_, err := ParseStandard("TZ=UTC")
+	if err == nil {
+		t.Error("expected an error, got none")
+	}
+
+	_, err = ParseStandard("TZ=UTC ")
+	if err == nil {
+		t.Error("expected an error, got none")
+	}
+
+	_, err = ParseStandard("TZ=0")
+	if err == nil {
+		t.Error("expected an error, got none")
+	}
+
+	_, err = ParseStandard("TZ=0 ")
+	if err == nil {
+		t.Error("expected an error, got none")
+	}
+}
+
 func every5min(loc *time.Location) *SpecSchedule {
 	return &SpecSchedule{1 << 0, 1 << 5, all(hours), all(dom), all(months), all(dow), loc}
 }
