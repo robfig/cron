@@ -700,3 +700,214 @@ func stop(cron *Cron) chan bool {
 func newWithSeconds() *Cron {
 	return New(WithParser(secondParser), WithChain())
 }
+
+func TestSetJobPaused(t *testing.T) {
+	t.Run("pause while running stops execution", func(t *testing.T) {
+		var calls int64
+		cron := newWithSeconds()
+		id, _ := cron.AddFunc("* * * * * *", func() { atomic.AddInt64(&calls, 1) })
+		cron.Start()
+		defer cron.Stop()
+
+		// Wait for at least one execution
+		<-time.After(OneSecond)
+		if atomic.LoadInt64(&calls) < 1 {
+			t.Fatal("expected job to run at least once before pause")
+		}
+
+		// Pause the job
+		cron.SetJobPaused(id, true)
+		callsAtPause := atomic.LoadInt64(&calls)
+
+		// Wait and verify no more executions
+		<-time.After(OneSecond + 100*time.Millisecond)
+		callsAfterPause := atomic.LoadInt64(&calls)
+
+		if callsAfterPause > callsAtPause {
+			t.Errorf("job ran %d times after pause, expected 0", callsAfterPause-callsAtPause)
+		}
+	})
+
+	t.Run("pause before running prevents execution", func(t *testing.T) {
+		var calls int64
+		cron := newWithSeconds()
+		id, _ := cron.AddFunc("* * * * * *", func() { atomic.AddInt64(&calls, 1) })
+
+		// Pause before starting
+		cron.SetJobPaused(id, true)
+
+		cron.Start()
+		defer cron.Stop()
+
+		// Wait and verify no executions
+		<-time.After(OneSecond + 100*time.Millisecond)
+		if atomic.LoadInt64(&calls) != 0 {
+			t.Errorf("paused job ran %d times, expected 0", calls)
+		}
+	})
+
+	t.Run("resume after pause restarts execution", func(t *testing.T) {
+		var calls int64
+		cron := newWithSeconds()
+		id, _ := cron.AddFunc("* * * * * *", func() { atomic.AddInt64(&calls, 1) })
+
+		// Pause before starting
+		cron.SetJobPaused(id, true)
+
+		cron.Start()
+		defer cron.Stop()
+
+		// Wait to confirm no executions while paused
+		<-time.After(OneSecond)
+		if atomic.LoadInt64(&calls) != 0 {
+			t.Errorf("paused job ran %d times before resume, expected 0", calls)
+		}
+
+		// Resume the job
+		cron.SetJobPaused(id, false)
+
+		// Wait for job to run
+		<-time.After(OneSecond + 100*time.Millisecond)
+		if atomic.LoadInt64(&calls) < 1 {
+			t.Error("expected job to run after resume")
+		}
+	})
+
+	t.Run("pause non-existent job is no-op", func(t *testing.T) {
+		cron := newWithSeconds()
+		cron.Start()
+		defer cron.Stop()
+
+		// Should not panic or cause issues
+		cron.SetJobPaused(EntryID(999), true)
+		cron.SetJobPaused(EntryID(999), false)
+	})
+
+	t.Run("paused job still updates schedule", func(t *testing.T) {
+		cron := newWithSeconds()
+		id, _ := cron.AddFunc("* * * * * *", func() {})
+
+		cron.Start()
+		defer cron.Stop()
+
+		// Wait for first tick
+		<-time.After(OneSecond)
+
+		// Get the entry and record next time
+		entry1 := cron.Entry(id)
+		if entry1.Prev.IsZero() {
+			t.Fatal("expected Prev to be set after first run")
+		}
+
+		// Pause the job
+		cron.SetJobPaused(id, true)
+
+		// Wait for another tick
+		<-time.After(OneSecond + 100*time.Millisecond)
+
+		// The schedule should still be updated even when paused
+		entry2 := cron.Entry(id)
+		if !entry2.Prev.After(entry1.Prev) {
+			t.Error("expected Prev to be updated even while paused")
+		}
+	})
+
+	t.Run("paused state visible in Entry", func(t *testing.T) {
+		cron := newWithSeconds()
+		id, _ := cron.AddFunc("* * * * * *", func() {})
+
+		cron.Start()
+		defer cron.Stop()
+
+		// Initially not paused
+		entry := cron.Entry(id)
+		if entry.Paused {
+			t.Error("expected entry to not be paused initially")
+		}
+
+		// Pause the job
+		cron.SetJobPaused(id, true)
+
+		// Give time for the pause to take effect
+		<-time.After(50 * time.Millisecond)
+
+		// Check Entries() reflects the pause state
+		entry = cron.Entry(id)
+		if !entry.Paused {
+			t.Error("expected entry to be paused after SetJobPaused(id, true)")
+		}
+
+		// Resume the job
+		cron.SetJobPaused(id, false)
+
+		// Give time for the resume to take effect
+		<-time.After(50 * time.Millisecond)
+
+		// Check Entries() reflects the resumed state
+		entry = cron.Entry(id)
+		if entry.Paused {
+			t.Error("expected entry to not be paused after SetJobPaused(id, false)")
+		}
+	})
+
+	t.Run("multiple pause/resume cycles", func(t *testing.T) {
+		var calls int64
+		cron := newWithSeconds()
+		id, _ := cron.AddFunc("* * * * * *", func() { atomic.AddInt64(&calls, 1) })
+
+		cron.Start()
+		defer cron.Stop()
+
+		for i := 0; i < 3; i++ {
+			// Wait for at least one run
+			callsBefore := atomic.LoadInt64(&calls)
+			<-time.After(OneSecond + 100*time.Millisecond)
+			if atomic.LoadInt64(&calls) <= callsBefore {
+				t.Fatalf("cycle %d: expected job to run while not paused", i)
+			}
+
+			// Pause
+			cron.SetJobPaused(id, true)
+			callsAtPause := atomic.LoadInt64(&calls)
+			<-time.After(OneSecond + 100*time.Millisecond)
+			if atomic.LoadInt64(&calls) > callsAtPause {
+				t.Fatalf("cycle %d: job ran while paused", i)
+			}
+
+			// Resume
+			cron.SetJobPaused(id, false)
+		}
+	})
+
+	t.Run("pause one job, others continue running", func(t *testing.T) {
+		var calls1, calls2 int64
+		cron := newWithSeconds()
+
+		id1, _ := cron.AddFunc("* * * * * *", func() { atomic.AddInt64(&calls1, 1) })
+		cron.AddFunc("* * * * * *", func() { atomic.AddInt64(&calls2, 1) })
+
+		cron.Start()
+		defer cron.Stop()
+
+		// Wait for both jobs to run
+		<-time.After(OneSecond)
+		if atomic.LoadInt64(&calls1) < 1 || atomic.LoadInt64(&calls2) < 1 {
+			t.Fatal("expected both jobs to run initially")
+		}
+
+		// Pause first job
+		cron.SetJobPaused(id1, true)
+		calls1AtPause := atomic.LoadInt64(&calls1)
+		calls2AtPause := atomic.LoadInt64(&calls2)
+
+		// Wait and verify only second job continues
+		<-time.After(OneSecond + 100*time.Millisecond)
+
+		if atomic.LoadInt64(&calls1) > calls1AtPause {
+			t.Error("paused job1 should not have run")
+		}
+		if atomic.LoadInt64(&calls2) <= calls2AtPause {
+			t.Error("job2 should have continued running while job1 was paused")
+		}
+	})
+}
