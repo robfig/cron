@@ -7,6 +7,12 @@ import (
 	"time"
 )
 
+// pauseRequest represents a request to change a job's paused state.
+type pauseRequest struct {
+	id     EntryID
+	paused bool
+}
+
 // Cron keeps track of any number of entries, invoking the associated func as
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
@@ -17,6 +23,7 @@ type Cron struct {
 	add       chan *Entry
 	remove    chan EntryID
 	snapshot  chan chan []Entry
+	setPaused chan pauseRequest
 	running   bool
 	logger    Logger
 	runningMu sync.Mutex
@@ -69,6 +76,10 @@ type Entry struct {
 	// It is kept around so that user code that needs to get at the job later,
 	// e.g. via Entries() can do so.
 	Job Job
+
+	// Paused indicates whether this entry is paused. Paused entries
+	// will not run until resumed via SetJobPaused.
+	Paused bool
 }
 
 // Valid returns true if this is not the zero entry.
@@ -97,17 +108,17 @@ func (s byTime) Less(i, j int) bool {
 //
 // Available Settings
 //
-//   Time Zone
-//     Description: The time zone in which schedules are interpreted
-//     Default:     time.Local
+//	Time Zone
+//	  Description: The time zone in which schedules are interpreted
+//	  Default:     time.Local
 //
-//   Parser
-//     Description: Parser converts cron spec strings into cron.Schedules.
-//     Default:     Accepts this spec: https://en.wikipedia.org/wiki/Cron
+//	Parser
+//	  Description: Parser converts cron spec strings into cron.Schedules.
+//	  Default:     Accepts this spec: https://en.wikipedia.org/wiki/Cron
 //
-//   Chain
-//     Description: Wrap submitted jobs to customize behavior.
-//     Default:     A chain that recovers panics and logs them to stderr.
+//	Chain
+//	  Description: Wrap submitted jobs to customize behavior.
+//	  Default:     A chain that recovers panics and logs them to stderr.
 //
 // See "cron.With*" to modify the default behavior.
 func New(opts ...Option) *Cron {
@@ -118,6 +129,7 @@ func New(opts ...Option) *Cron {
 		stop:      make(chan struct{}),
 		snapshot:  make(chan chan []Entry),
 		remove:    make(chan EntryID),
+		setPaused: make(chan pauseRequest),
 		running:   false,
 		runningMu: sync.Mutex{},
 		logger:    DefaultLogger,
@@ -211,6 +223,29 @@ func (c *Cron) Remove(id EntryID) {
 	}
 }
 
+// SetJobPaused sets the paused state for the job with the given ID.
+// Paused jobs remain in the scheduler but will not run until resumed.
+// Setting paused to true pauses the job; setting it to false resumes it.
+// If the job ID does not exist, this is a no-op.
+func (c *Cron) SetJobPaused(id EntryID, paused bool) {
+	c.runningMu.Lock()
+	defer c.runningMu.Unlock()
+	if c.running {
+		c.setPaused <- pauseRequest{id: id, paused: paused}
+	} else {
+		c.setEntryPaused(id, paused)
+	}
+}
+
+func (c *Cron) setEntryPaused(id EntryID, paused bool) {
+	for _, e := range c.entries {
+		if e.ID == id {
+			e.Paused = paused
+			return
+		}
+	}
+}
+
 // Start the cron scheduler in its own goroutine, or no-op if already started.
 func (c *Cron) Start() {
 	c.runningMu.Lock()
@@ -270,6 +305,13 @@ func (c *Cron) run() {
 					if e.Next.After(now) || e.Next.IsZero() {
 						break
 					}
+					if e.Paused {
+						// Skip paused entries but still update their schedule
+						e.Prev = e.Next
+						e.Next = e.Schedule.Next(now)
+						c.logger.Info("skipped (paused)", "now", now, "entry", e.ID, "next", e.Next)
+						continue
+					}
 					c.startJob(e.WrappedJob)
 					e.Prev = e.Next
 					e.Next = e.Schedule.Next(now)
@@ -297,6 +339,15 @@ func (c *Cron) run() {
 				now = c.now()
 				c.removeEntry(id)
 				c.logger.Info("removed", "entry", id)
+
+			case req := <-c.setPaused:
+				c.setEntryPaused(req.id, req.paused)
+				if req.paused {
+					c.logger.Info("paused", "entry", req.id)
+				} else {
+					c.logger.Info("resumed", "entry", req.id)
+				}
+				continue
 			}
 
 			break
