@@ -96,6 +96,9 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		var err error
 		i := strings.Index(spec, " ")
 		eq := strings.Index(spec, "=")
+		if i == -1 {
+			return nil, fmt.Errorf("missing time zone specification or fields after %s", spec[:eq+1])
+		}
 		if loc, err = time.LoadLocation(spec[eq+1 : i]); err != nil {
 			return nil, fmt.Errorf("provided bad location %s: %v", spec[eq+1:i], err)
 		}
