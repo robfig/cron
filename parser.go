@@ -61,11 +61,11 @@ type Parser struct {
 //  sched, err := specParser.Parse("0 0 15 */3 *")
 //
 //  // Same as above, just excludes time fields
-//  specParser := NewParser(Dom | Month | Dow)
+//  subsParser := NewParser(Dom | Month | Dow)
 //  sched, err := specParser.Parse("15 */3 *")
 //
 //  // Same as above, just makes Dow optional
-//  specParser := NewParser(Dom | Month | DowOptional)
+//  subsParser := NewParser(Dom | Month | DowOptional)
 //  sched, err := specParser.Parse("15 */3")
 //
 func NewParser(options ParseOption) Parser {
@@ -96,6 +96,13 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 		var err error
 		i := strings.Index(spec, " ")
 		eq := strings.Index(spec, "=")
+		// A timezone prefix without a following space (e.g. "TZ=0" on
+		// its own) leaves i == -1, which used to slice spec[eq+1:-1] and
+		// panic with `slice bounds out of range [:-1]` on fuzz-style
+		// input (#554). Surface it as a normal parse error instead.
+		if i == -1 {
+			return nil, fmt.Errorf("missing schedule after timezone prefix: %q", spec)
+		}
 		if loc, err = time.LoadLocation(spec[eq+1 : i]); err != nil {
 			return nil, fmt.Errorf("provided bad location %s: %v", spec[eq+1:i], err)
 		}
