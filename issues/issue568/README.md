@@ -1,0 +1,1 @@
+- winsw <install | uninstall | start | stop | status>
