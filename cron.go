@@ -11,19 +11,20 @@ import (
 // specified by the schedule. It may be started, stopped, and the entries may
 // be inspected while running.
 type Cron struct {
-	entries   []*Entry
-	chain     Chain
-	stop      chan struct{}
-	add       chan *Entry
-	remove    chan EntryID
-	snapshot  chan chan []Entry
-	running   bool
-	logger    Logger
-	runningMu sync.Mutex
-	location  *time.Location
-	parser    ScheduleParser
-	nextID    EntryID
-	jobWaiter sync.WaitGroup
+	entries      []*Entry
+	chain        Chain
+	stop         chan struct{}
+	add          chan *Entry
+	remove       chan EntryID
+	snapshot     chan chan []Entry
+	running      bool
+	logger       Logger
+	runningMu    sync.Mutex
+	location     *time.Location
+	parser       ScheduleParser
+	nextID       EntryID
+	jobWaiter    sync.WaitGroup
+	skipIfLateBy time.Duration
 }
 
 // ScheduleParser is an interface for schedule spec parsers that return a Schedule
@@ -97,17 +98,17 @@ func (s byTime) Less(i, j int) bool {
 //
 // Available Settings
 //
-//   Time Zone
-//     Description: The time zone in which schedules are interpreted
-//     Default:     time.Local
+//	Time Zone
+//	  Description: The time zone in which schedules are interpreted
+//	  Default:     time.Local
 //
-//   Parser
-//     Description: Parser converts cron spec strings into cron.Schedules.
-//     Default:     Accepts this spec: https://en.wikipedia.org/wiki/Cron
+//	Parser
+//	  Description: Parser converts cron spec strings into cron.Schedules.
+//	  Default:     Accepts this spec: https://en.wikipedia.org/wiki/Cron
 //
-//   Chain
-//     Description: Wrap submitted jobs to customize behavior.
-//     Default:     A chain that recovers panics and logs them to stderr.
+//	Chain
+//	  Description: Wrap submitted jobs to customize behavior.
+//	  Default:     A chain that recovers panics and logs them to stderr.
 //
 // See "cron.With*" to modify the default behavior.
 func New(opts ...Option) *Cron {
@@ -123,6 +124,12 @@ func New(opts ...Option) *Cron {
 		logger:    DefaultLogger,
 		location:  time.Local,
 		parser:    standardParser,
+		// The maximum allowable deviation between the triggering time and the expected time.
+		// If it exceeds this limit, this execution will be skipped.
+		// Under normal circumstances, the deviation is only at the millisecond level. Here,
+		// setting it to 10 minutes is merely as a fallback measure to prevent accidental triggering after
+		// the system goes into sleep mode or resumes snapshot restoration.
+		skipIfLateBy: 10 * time.Minute,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -263,17 +270,36 @@ func (c *Cron) run() {
 			select {
 			case now = <-timer.C:
 				now = now.In(c.location)
-				c.logger.Info("wake", "now", now)
+				now2 := time.Now().In(c.location)
+				c.logger.Info("wake", "now", now, "now2", now2)
 
 				// Run every entry whose next time was less than now
 				for _, e := range c.entries {
 					if e.Next.After(now) || e.Next.IsZero() {
 						break
 					}
-					c.startJob(e.WrappedJob)
-					e.Prev = e.Next
-					e.Next = e.Schedule.Next(now)
-					c.logger.Info("run", "now", now, "entry", e.ID, "next", e.Next)
+					c.logger.Info("entry wake", "now", now, "now2", now2, "entry", e.ID, "currentNext", e.Next)
+					// This loop is non-blocking, so the delay between now and now2 should be negligible.
+					// The only exception is when the process is restored from a snapshot (e.g. Windows Fast Startup),
+					// where now (from timer.C) may be a stale time like 23:59:59, while now2 (time.Now()) reflects
+					// the actual current time. Even if now2 is slightly off, it doesn't matter — skipIfLateBy
+					// provides the final safety net, and a small drift within the tolerance is acceptable.
+					lateBy := now2.Sub(e.Next)
+					if c.skipIfLateBy == 0 || lateBy < c.skipIfLateBy {
+						c.startJob(e.WrappedJob)
+						e.Prev = e.Next
+						e.Next = e.Schedule.Next(now2)
+						c.logger.Info("run", "now", now, "now2", now2, "entry", e.ID, "next", e.Next)
+					} else {
+						e.Prev = e.Next
+						e.Next = e.Schedule.Next(now2)
+						c.logger.Info("run: skipped for lateBy",
+							"now", now, "now2", now2,
+							"skipIfLateBy", c.skipIfLateBy,
+							"lateBy", lateBy,
+							"entry", e.ID, "next", e.Next,
+						)
+					}
 				}
 
 			case newEntry := <-c.add:
