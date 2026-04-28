@@ -174,6 +174,27 @@ WRAP:
 	return t.In(origLocation)
 }
 
+// NextN returns the next n times this schedule is activated, greater than the given
+// time. If no time can be found to satisfy the schedule within 5 years, returns
+// the partial results collected so far. The results are returned in ascending order.
+// If n <= 0, returns an empty slice.
+func (s *SpecSchedule) NextN(t time.Time, n int) []time.Time {
+	if n <= 0 {
+		return []time.Time{}
+	}
+	result := make([]time.Time, 0, n)
+	current := t
+	for i := 0; i < n; i++ {
+		next := s.Next(current)
+		if next.IsZero() {
+			break
+		}
+		result = append(result, next)
+		current = next
+	}
+	return result
+}
+
 // dayMatches returns true if the schedule's day-of-week and day-of-month
 // restrictions are satisfied by the given time.
 func dayMatches(s *SpecSchedule, t time.Time) bool {

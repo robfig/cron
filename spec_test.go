@@ -298,3 +298,108 @@ func TestSlash0NoHang(t *testing.T) {
 		t.Error("expected an error on 0 increment")
 	}
 }
+
+func TestSpecSchedule_NextN(t *testing.T) {
+	t.Parallel()
+
+	baseTime := getTime("Mon Jul 9 14:45:00 2012")
+
+	t.Run("n=0 returns empty slice", func(t *testing.T) {
+		t.Parallel()
+		sched, err := secondParser.Parse("0 0/15 * * * *")
+		if err != nil {
+			t.Fatal(err)
+		}
+		specSched := sched.(*SpecSchedule)
+		result := specSched.NextN(baseTime, 0)
+		if len(result) != 0 {
+			t.Errorf("expected empty slice, got %d elements", len(result))
+		}
+	})
+
+	t.Run("n=0 with negative n returns empty slice", func(t *testing.T) {
+		t.Parallel()
+		sched, err := secondParser.Parse("0 0/15 * * * *")
+		if err != nil {
+			t.Fatal(err)
+		}
+		specSched := sched.(*SpecSchedule)
+		result := specSched.NextN(baseTime, -5)
+		if len(result) != 0 {
+			t.Errorf("expected empty slice for n=-5, got %d elements", len(result))
+		}
+	})
+
+	t.Run("n=1 returns single time", func(t *testing.T) {
+		t.Parallel()
+		sched, err := secondParser.Parse("0 0/15 * * * *")
+		if err != nil {
+			t.Fatal(err)
+		}
+		specSched := sched.(*SpecSchedule)
+		result := specSched.NextN(baseTime, 1)
+		if len(result) != 1 {
+			t.Fatalf("expected 1 element, got %d", len(result))
+		}
+		expected := getTime("Mon Jul 9 15:00 2012")
+		if !result[0].Equal(expected) {
+			t.Errorf("expected %v, got %v", expected, result[0])
+		}
+	})
+
+	t.Run("n=3 with every second returns 3 consecutive times", func(t *testing.T) {
+		t.Parallel()
+		sched, err := secondParser.Parse("*/1 * * * * *")
+		if err != nil {
+			t.Fatal(err)
+		}
+		specSched := sched.(*SpecSchedule)
+		result := specSched.NextN(baseTime, 3)
+		if len(result) != 3 {
+			t.Fatalf("expected 3 elements, got %d", len(result))
+		}
+		expected1 := baseTime.Add(1 * time.Second)
+		expected2 := baseTime.Add(2 * time.Second)
+		expected3 := baseTime.Add(3 * time.Second)
+		if !result[0].Equal(expected1) {
+			t.Errorf("expected first element %v, got %v", expected1, result[0])
+		}
+		if !result[1].Equal(expected2) {
+			t.Errorf("expected second element %v, got %v", expected2, result[1])
+		}
+		if !result[2].Equal(expected3) {
+			t.Errorf("expected third element %v, got %v", expected3, result[2])
+		}
+	})
+
+	t.Run("unsatisfiable schedule returns fewer results than n", func(t *testing.T) {
+		t.Parallel()
+		sched, err := secondParser.Parse("0 0 0 30 Feb ?")
+		if err != nil {
+			t.Fatal(err)
+		}
+		specSched := sched.(*SpecSchedule)
+		result := specSched.NextN(baseTime, 5)
+		if len(result) >= 5 {
+			t.Errorf("expected fewer than 5 elements for unsatisfiable schedule, got %d", len(result))
+		}
+	})
+
+	t.Run("results are strictly increasing", func(t *testing.T) {
+		t.Parallel()
+		sched, err := secondParser.Parse("0 0/15 * * * *")
+		if err != nil {
+			t.Fatal(err)
+		}
+		specSched := sched.(*SpecSchedule)
+		result := specSched.NextN(baseTime, 5)
+		if len(result) != 5 {
+			t.Fatalf("expected 5 elements, got %d", len(result))
+		}
+		for i := 1; i < len(result); i++ {
+			if !result[i].After(result[i-1]) {
+				t.Errorf("result[%d] = %v is not after result[%d] = %v", i, result[i], i-1, result[i-1])
+			}
+		}
+	})
+}
