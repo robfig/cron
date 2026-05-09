@@ -313,6 +313,9 @@ func getRange(expr string, r bounds) (uint64, error) {
 	if step == 0 {
 		return 0, fmt.Errorf("step of range should be a positive number: %s", expr)
 	}
+	if step > r.max-r.min {
+		return 0, fmt.Errorf("step (%d) above maximum (%d): %s", step, r.max-r.min, expr)
+	}
 
 	return getBits(start, end, step) | extra, nil
 }
