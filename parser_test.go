@@ -334,6 +334,18 @@ func TestStandardSpecSchedule(t *testing.T) {
 			expr: "* * * *",
 			err:  "expected exactly 5 fields",
 		},
+		{
+			// Step value larger than the field range should be rejected.
+			// */90 in the minute field (range 0-59) would only ever fire at
+			// minute 0, silently ignoring the intent.  See issue #543.
+			expr: "*/90 * * * *",
+			err:  "step (90) above maximum (59)",
+		},
+		{
+			// Same check for hours: */30 is the max valid step (0-23 → range 23).
+			expr: "* */30 * * *",
+			err:  "step (30) above maximum (23)",
+		},
 	}
 
 	for _, c := range entries {

@@ -76,14 +76,14 @@ func DelayIfStillRunning(logger Logger) JobWrapper {
 // SkipIfStillRunning skips an invocation of the Job if a previous invocation is
 // still running. It logs skips to the given logger at Info level.
 func SkipIfStillRunning(logger Logger) JobWrapper {
-	var ch = make(chan struct{}, 1)
-	ch <- struct{}{}
 	return func(j Job) Job {
+		var ch = make(chan struct{}, 1)
+		ch <- struct{}{}
 		return FuncJob(func() {
 			select {
 			case v := <-ch:
+				defer func() { ch <- v }()
 				j.Run()
-				ch <- v
 			default:
 				logger.Info("skip")
 			}

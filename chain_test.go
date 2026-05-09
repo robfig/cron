@@ -218,4 +218,25 @@ func TestChainSkipIfStillRunning(t *testing.T) {
 		}
 	})
 
+	t.Run("different jobs independent", func(t *testing.T) {
+		var j1, j2 countJob
+		j1.delay = 10 * time.Millisecond
+		j2.delay = 10 * time.Millisecond
+		chain := NewChain(SkipIfStillRunning(DiscardLogger))
+		wrappedJob1 := chain.Then(&j1)
+		wrappedJob2 := chain.Then(&j2)
+		for i := 0; i < 11; i++ {
+			go wrappedJob1.Run()
+			go wrappedJob2.Run()
+		}
+		time.Sleep(100 * time.Millisecond)
+		var (
+			done1 = j1.Done()
+			done2 = j2.Done()
+		)
+		if done1 != 1 || done2 != 1 {
+			t.Error("expected both jobs executed once, got", done1, "and", done2)
+		}
+	})
+
 }
