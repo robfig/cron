@@ -374,6 +374,18 @@ func every5min(loc *time.Location) *SpecSchedule {
 	return &SpecSchedule{1 << 0, 1 << 5, all(hours), all(dom), all(months), all(dow), loc}
 }
 
+// TestParseTZMissingFields verifies that a TZ/CRON_TZ prefix with no
+// trailing schedule fields returns an error rather than panicking with a
+// slice-bounds-out-of-range crash. See GitHub issue #554.
+func TestParseTZMissingFields(t *testing.T) {
+	cases := []string{"TZ=0", "TZ=UTC", "CRON_TZ=America/New_York"}
+	for _, spec := range cases {
+		if _, err := ParseStandard(spec); err == nil {
+			t.Errorf("ParseStandard(%q): expected error for missing schedule fields, got nil", spec)
+		}
+	}
+}
+
 func every5min5s(loc *time.Location) *SpecSchedule {
 	return &SpecSchedule{1 << 5, 1 << 5, all(hours), all(dom), all(months), all(dow), loc}
 }
