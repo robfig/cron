@@ -334,6 +334,18 @@ func TestStandardSpecSchedule(t *testing.T) {
 			expr: "* * * *",
 			err:  "expected exactly 5 fields",
 		},
+		{
+			// Step value larger than the field range should be rejected.
+			// */90 in the minute field (range 0-59) would only ever fire at
+			// minute 0, silently ignoring the intent.  See issue #543.
+			expr: "*/90 * * * *",
+			err:  "step (90) above maximum (59)",
+		},
+		{
+			// Same check for hours: */30 is the max valid step (0-23 → range 23).
+			expr: "* */30 * * *",
+			err:  "step (30) above maximum (23)",
+		},
 	}
 
 	for _, c := range entries {
@@ -360,6 +372,18 @@ func TestNoDescriptorParser(t *testing.T) {
 
 func every5min(loc *time.Location) *SpecSchedule {
 	return &SpecSchedule{1 << 0, 1 << 5, all(hours), all(dom), all(months), all(dow), loc}
+}
+
+// TestParseTZMissingFields verifies that a TZ/CRON_TZ prefix with no
+// trailing schedule fields returns an error rather than panicking with a
+// slice-bounds-out-of-range crash. See GitHub issue #554.
+func TestParseTZMissingFields(t *testing.T) {
+	cases := []string{"TZ=0", "TZ=UTC", "CRON_TZ=America/New_York"}
+	for _, spec := range cases {
+		if _, err := ParseStandard(spec); err == nil {
+			t.Errorf("ParseStandard(%q): expected error for missing schedule fields, got nil", spec)
+		}
+	}
 }
 
 func every5min5s(loc *time.Location) *SpecSchedule {

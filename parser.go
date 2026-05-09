@@ -95,6 +95,9 @@ func (p Parser) Parse(spec string) (Schedule, error) {
 	if strings.HasPrefix(spec, "TZ=") || strings.HasPrefix(spec, "CRON_TZ=") {
 		var err error
 		i := strings.Index(spec, " ")
+		if i < 0 {
+			return nil, fmt.Errorf("timezone prefix missing schedule fields: %v", spec)
+		}
 		eq := strings.Index(spec, "=")
 		if loc, err = time.LoadLocation(spec[eq+1 : i]); err != nil {
 			return nil, fmt.Errorf("provided bad location %s: %v", spec[eq+1:i], err)
@@ -312,6 +315,9 @@ func getRange(expr string, r bounds) (uint64, error) {
 	}
 	if step == 0 {
 		return 0, fmt.Errorf("step of range should be a positive number: %s", expr)
+	}
+	if step > r.max-r.min {
+		return 0, fmt.Errorf("step (%d) above maximum (%d): %s", step, r.max-r.min, expr)
 	}
 
 	return getBits(start, end, step) | extra, nil
