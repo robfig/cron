@@ -125,6 +125,11 @@ func TestParseScheduleErrors(t *testing.T) {
 		{"@unrecognized", "unrecognized descriptor"},
 		{"* * * *", "expected 5 to 6 fields"},
 		{"", "empty spec string"},
+		// Regression for #554 - timezone prefix with no schedule suffix
+		// used to panic with `slice bounds out of range [:-1]`.
+		{"TZ=0", "missing schedule after timezone prefix"},
+		{"TZ=UTC", "missing schedule after timezone prefix"},
+		{"CRON_TZ=America/Los_Angeles", "missing schedule after timezone prefix"},
 	}
 	for _, c := range tests {
 		actual, err := secondParser.Parse(c.expr)
