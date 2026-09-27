@@ -107,7 +107,7 @@ func (s byTime) Less(i, j int) bool {
 //
 //   Chain
 //     Description: Wrap submitted jobs to customize behavior.
-//     Default:     A chain that recovers panics and logs them to stderr.
+//     Default:     A Chain that does nothing (panic recovery is opt-in).
 //
 // See "cron.With*" to modify the default behavior.
 func New(opts ...Option) *Cron {
