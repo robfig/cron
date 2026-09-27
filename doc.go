@@ -175,7 +175,7 @@ A Cron runner may be configured with a chain of job wrappers to add
 cross-cutting functionality to all submitted jobs. For example, they may be used
 to achieve the following effects:
 
-  - Recover any panics from jobs (activated by default)
+  - Recover any panics from jobs (opt-in via cron.WithChain(cron.Recover(logger)))
   - Delay a job's execution if the previous run hasn't completed yet
   - Skip a job's execution if the previous run hasn't completed yet
   - Log each job's invocations
