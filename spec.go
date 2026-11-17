@@ -135,28 +135,32 @@ WRAP:
 		}
 	}
 
-	for 1<<uint(t.Hour())&s.Hour == 0 {
-		if !added {
-			added = true
-			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, loc)
-		}
-		t = t.Add(1 * time.Hour)
+	hour := t.Hour()
+	for 1<<uint(hour)&s.Hour == 0 {
+		added = true
+		t = nextHour(t)
 
-		if t.Hour() == 0 {
+		nextHour := t.Hour()
+		if nextHour <= hour {
 			goto WRAP
 		}
+		hour = nextHour
 	}
 
-	for 1<<uint(t.Minute())&s.Minute == 0 {
+	hour, minute, _ := t.Clock()
+	for 1<<uint(minute)&s.Minute == 0 {
 		if !added {
 			added = true
 			t = t.Truncate(time.Minute)
+			hour, _, _ = t.Clock()
 		}
 		t = t.Add(1 * time.Minute)
 
-		if t.Minute() == 0 {
+		nextHour, nextMinute, _ := t.Clock()
+		if nextMinute == 0 || nextHour != hour {
 			goto WRAP
 		}
+		minute = nextMinute
 	}
 
 	for 1<<uint(t.Second())&s.Second == 0 {
@@ -172,6 +176,30 @@ WRAP:
 	}
 
 	return t.In(origLocation)
+}
+
+// nextHour advances to the next local hour or an intervening offset change.
+func nextHour(t time.Time) time.Time {
+	hour, minute, second := t.Clock()
+	next := t.Add(time.Duration(60-minute)*time.Minute - time.Duration(second)*time.Second)
+	nextHour, nextMinute, nextSecond := next.Clock()
+	if nextHour == (hour+1)%24 && nextMinute == 0 && nextSecond == 0 {
+		return next
+	}
+
+	// An hour-sized step can skip valid times in a repeated hour. Stop at
+	// the offset change so that all schedule fields can be checked there.
+	_, offset := t.Zone()
+	for next.Sub(t) > time.Second {
+		mid := t.Add(next.Sub(t) / time.Second / 2 * time.Second)
+		_, midOffset := mid.Zone()
+		if midOffset == offset {
+			t = mid
+		} else {
+			next = mid
+		}
+	}
+	return next
 }
 
 // dayMatches returns true if the schedule's day-of-week and day-of-month
