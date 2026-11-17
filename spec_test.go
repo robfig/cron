@@ -199,6 +199,83 @@ func TestNext(t *testing.T) {
 	}
 }
 
+func TestNextOffsetTransitions(t *testing.T) {
+	tests := []struct {
+		name, zone, spec, start string
+		want                    []string
+	}{
+		{
+			name: "Caracas forward half hour", zone: "America/Caracas", spec: "0 12 * * *",
+			start: "2016-04-30T12:00:00-0430",
+			want:  []string{"2016-05-01T12:00:00-0400", "2016-05-02T12:00:00-0400"},
+		},
+		{
+			name: "Lord Howe backward half hour", zone: "Australia/Lord_Howe", spec: "0 12 * * *",
+			start: "2016-04-02T12:00:00+1100",
+			want:  []string{"2016-04-03T12:00:00+1030", "2016-04-04T12:00:00+1030"},
+		},
+		{
+			name: "Lord Howe forward half hour", zone: "Australia/Lord_Howe", spec: "0 12 * * *",
+			start: "2016-10-01T12:00:00+1030",
+			want:  []string{"2016-10-02T12:00:00+1100", "2016-10-03T12:00:00+1100"},
+		},
+		{
+			name: "Pyongyang forward half hour", zone: "Asia/Pyongyang", spec: "0 12 * * *",
+			start: "2018-05-04T12:00:00+0830",
+			want:  []string{"2018-05-05T12:00:00+0900", "2018-05-06T12:00:00+0900"},
+		},
+		{
+			name: "Chatham fall back stays in the selected hour", zone: "Pacific/Chatham", spec: "45 3 * * *",
+			start: "2016-04-02T03:45:00+1345",
+			want:  []string{"2016-04-03T03:45:00+1245", "2016-04-04T03:45:00+1245", "2016-04-05T03:45:00+1245"},
+		},
+		{
+			name: "Chatham repeated hour", zone: "Pacific/Chatham", spec: "50 2 * * *",
+			start: "2016-04-03T02:50:00+1345",
+			want:  []string{"2016-04-03T02:50:00+1245", "2016-04-04T02:50:00+1245"},
+		},
+		{
+			name: "Lord Howe repeated hour", zone: "Australia/Lord_Howe", spec: "45 1 * * *",
+			start: "2016-04-03T01:45:00+1100",
+			want:  []string{"2016-04-03T01:45:00+1030", "2016-04-04T01:45:00+1030"},
+		},
+		{
+			name: "Lord Howe existing time after gap", zone: "Australia/Lord_Howe", spec: "45 2 * * *",
+			start: "2016-10-01T02:45:00+1030",
+			want:  []string{"2016-10-02T02:45:00+1100", "2016-10-03T02:45:00+1100"},
+		},
+		{
+			name: "Lord Howe nonexistent time", zone: "Australia/Lord_Howe", spec: "15 2 * * *",
+			start: "2016-10-01T02:15:00+1030",
+			want:  []string{"2016-10-03T02:15:00+1100", "2016-10-04T02:15:00+1100"},
+		},
+		{
+			name: "Chatham existing time after gap", zone: "Pacific/Chatham", spec: "45 3 * * *",
+			start: "2016-09-24T03:45:00+1245",
+			want:  []string{"2016-09-25T03:45:00+1345", "2016-09-26T03:45:00+1345"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			schedule, err := ParseStandard("CRON_TZ=" + tt.zone + " " + tt.spec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			now := getTime(tt.start)
+			for _, value := range tt.want {
+				next := schedule.Next(now)
+				if !next.After(now) {
+					t.Fatalf("Next(%v) = %v, must advance", now, next)
+				}
+				if want := getTime(value); !next.Equal(want) {
+					t.Fatalf("Next(%v) = %v, want %v", now, next, want)
+				}
+				now = next
+			}
+		})
+	}
+}
+
 func TestErrors(t *testing.T) {
 	invalidSpecs := []string{
 		"xyz",
